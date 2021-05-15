@@ -44,8 +44,10 @@ def joinMember(guid, author, argument, memberID):
     members.add(memberID)
     check_save(guid)
     print("Joining group", argument, "as user", memberID)
-    return f"You joined {argument}!"
-
+    if author.id == memberID:
+        return f"You joined {argument}!"
+    else:
+        return f"{memberID} joined {argument}" 
 
 @bot.command()
 async def join(msg, argument, *args):
