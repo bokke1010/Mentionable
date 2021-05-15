@@ -212,7 +212,10 @@ async def configure(msg, argument, *args):
 
         elif args[0] == "getexcluded":
             if "fastping" in data:
-                message += "Curent global cooldown ignoring list:\n" + "\n".join(str(a) for a in data["fastping"])
+                message += "Curent global cooldown ignoring list:\n"
+                for role in data["fastping"]:
+                    rolename = msg.guild.get_role(role)
+                    message += f"{role}: {rolename}\n"
             else:
                 message += "Global cooldown is disabled"
 
