@@ -132,6 +132,12 @@ async def ping(msg, argument):
             await msg.send("Please wait before sending another ping")
             return
         recentserverpings["global"] = time.time()
+    
+    if "restrictping" in data:
+        authorRoleIDS = [role.id for role in msg.author.roles]
+        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0) and not msg.author.guild_permissions.manage_messages:
+            await msg.send("You do not have permissions to ping")
+            return
 
     # Ping users
     roledata, members = roles[argument]
@@ -170,6 +176,25 @@ async def create(msg, argument, *args):
     if SAVE_INSTANT:
         saveDatabase(msg.guild.id)
     await msg.send(f"You created the fake role '{argument}'!")
+
+
+@bot.command()
+async def rename(msg, oldname, newname):
+    data, roles = check_guild(msg.guild.id)
+    if not msg.author.guild_permissions.manage_roles:
+        await msg.send("You do not have permission to do this")
+        return
+    if newname in roles:
+        await msg.send("This role already exists, ignoring command.")
+        return
+    if oldname not in roles:
+        await msg.send("This role does not exist, ignoring command.")
+        return
+
+    role = roles.pop(oldname)
+    roles[newname] = role
+    check_save(msg.guild.id)
+    await msg.send(f"You renamed {oldname} to {newname}")
 
 
 @bot.command()
@@ -248,6 +273,67 @@ async def configure(msg, argument, *args):
         else:
             message = "subcommand not recognized"
     # -------------------------------
+    # ping restriction configuration:
+
+    elif argument == "pingrestrictions" or argument == "pr":
+        if args[0] == "enable":
+            if "restrictping" not in data:
+                data["restrictping"] = set()
+                message += "Enabling ping restriction"
+            else:
+                message += "Ping restriction was already enabled"
+
+        elif args[0] == "excluderoles":
+            if "restrictping" not in data:
+                data["restrictping"] = set()
+                message += "Ping restriction not yet enabled, enabling ping restriction\n"
+            if len(args) == 0:
+                message += "No roles were allowed access\n"
+            else:
+                for role in args[1:]:
+                    if not role.isnumeric():
+                        message += role + " is not a role ID\n"
+                        continue
+                    data["restrictping"].add(int(role))
+                    message += f"role with id {role}, name {msg.guild.get_role(int(role))} succesfully added\n"
+
+        elif args[0] == "getexcluded":
+            if "restrictping" in data:
+                message += "Curent list of roles allowed to ping:\n"
+                for role in data["restrictping"]:
+                    rolename = msg.guild.get_role(role)
+                    message += f"{role}: {rolename}\n"
+            else:
+                message += "Ping restrictions are disabled"
+
+        elif args[0] == "disable":
+            if "restrictping" in data:
+                data.pop("restrictping")
+                message += "Disabling ping restrictions"
+            else:
+                message += "Ping restrictions were not enabled"
+
+        elif args[0] == "includeroles":
+            message = ""
+            if "restrictping" not in data:
+                data["restrictping"] = set()
+                message += "Ping restrictions not yet enabled, enabling ping restrictions\n"
+            if len(args) == 0:
+                message += "No roles were given\n"
+            else:
+                for role in args[1:]:
+                    if not role.isnumeric():
+                        message += role + " is not a role ID\n"
+                        continue
+                    if int(role) not in data["restrictping"]:
+                        message += role + " was not allowed to ping\n"
+                        continue
+                    data["restrictping"].remove(int(role))
+                    message += f"role with id {role}, name {msg.guild.get_role(int(role))} succesfully removed\n"
+        else:
+            message = "subcommand not recognized"
+
+    # -------------------------------
     else:
         message = "command not recognized"
     check_save(guid)
@@ -305,7 +391,7 @@ async def help(msg, *args):
     if len(args) == 0:
         message = """**Basic commands:**\njoin x \n - Join group x\nleave x\n - Leave group x\nping x\n - Mention everyone in the group x\nget\n - See your current groups\nlist\n - Show all existing groups"""
         if msg.author.guild_permissions.manage_roles:
-            message += """\n**Requires 'Manage roles':**\ncreate x\n - Create a new group named x that anyone can join.\nhelp create\n - See additional options for create.\ndelete x\n - Remove a existing group by name\nkick x ID\n - Remove a member from group x by userID\njoin x ID\n - Add a user to a group by UID\nhelp globalcooldown\n - see cooldown configuration commands"""
+            message += """\n**Requires 'Manage roles':**\ncreate x\n - Create a new group named x that anyone can join.\nhelp create\n - See additional options for create.\ndelete x\n - Remove a existing group by name\nkick x ID\n - Remove a member from group x by userID\njoin x ID\n - Add a user to a group by UID\nhelp globalcooldown\n - see cooldown configuration commands\nhelp pingrestrictions\n - see ping restriction configuration commands"""
         await msg.send(message)
     elif args[0] == "globalcooldown" and msg.author.guild_permissions.manage_roles:
         message  = "**Requires 'Manage roles':**\n"
@@ -315,6 +401,16 @@ async def help(msg, *args):
         message += "excluderoles IDS\n - disables the global cooldown for the given roles (by id), and enables it globally\n"
         message += "includeroles IDS\n - reenables the global cooldown for the given roles (by id), and enables it globally\n"
         message += "getexcluded\n - see what role ID's currently ignore the global cooldown\n"
+
+        await msg.send(message)
+    elif args[0] == "pingrestrictions" and msg.author.guild_permissions.manage_roles:
+        message  = "**Requires 'Manage roles':**\n"
+        message += "configure pingrestrictions ... | configure pr ...\n - configure the restrictions\n"
+        message += "enable\n - enables the restrictions\n"
+        message += "disable\n - disable the restrictions, erasing all related data\n"
+        message += "excluderoles IDS\n - disables the restrictions for the given roles (by id), and enables it globally\n"
+        message += "includeroles IDS\n - reenables the restrictions for the given roles (by id), and enables it globally\n"
+        message += "getexcluded\n - see what role ID's currently ignore the restrictions\n"
 
         await msg.send(message)
     elif args[0] == "create" and msg.author.guild_permissions.manage_roles:
