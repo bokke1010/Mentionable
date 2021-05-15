@@ -29,6 +29,11 @@ def check_guild(guid):
     return database[guid]
 
 
+def check_save(guid):
+    if SAVE_INSTANT:
+        saveDatabase(guid)
+
+
 def joinMember(guid, author, argument, memberID):
     data, roles = check_guild(guid)
     if argument not in roles:
@@ -37,8 +42,7 @@ def joinMember(guid, author, argument, memberID):
     if "restricted" in roledata and not author.guild_permissions.manage_roles:
         return
     members.add(memberID)
-    if SAVE_INSTANT:
-        saveDatabase(guid)
+    check_save(guid)
     print("Joining group", argument, "as user", memberID)
     return f"You joined {argument}!"
 
@@ -53,7 +57,8 @@ async def join(msg, argument, *args):
 
 @bot.command()
 async def leave(msg, argument):
-    data, roles = check_guild(msg.guild.id)
+    guid = msg.guild.id
+    data, roles = check_guild(guid)
     if argument in roles:
         roledata, members = roles[argument]
         if "restricted" in roledata and not msg.author.guild_permissions.manage_roles:
@@ -61,8 +66,7 @@ async def leave(msg, argument):
             return
         if msg.author.id in members:
             members.remove(msg.author.id)
-            if SAVE_INSTANT:
-                saveDatabase(msg.guild.id)
+            check_save(guid)
             await msg.send(f"You left {argument}")
         else:
             await msg.send(f"You are not in {argument}")
@@ -87,8 +91,7 @@ async def kick(msg, userID, argument):
     roledata, members = roles[argument]
     if userID in members:
         members.remove(userID)
-        if SAVE_INSTANT:
-            saveDatabase(msg.guild.id)
+        check_save(msg.guild.id)
         await msg.send(f"This user was kicked from {argument}")
     else:
         await msg.send(f"This user is not part of {argument}")
@@ -96,22 +99,39 @@ async def kick(msg, userID, argument):
 
 @bot.command()
 async def ping(msg, argument):
-    data, roles = check_guild(msg.guild.id)
+    # Get guild data
+    gid = msg.guild.id
+    data, roles = check_guild(gid)
 
+    # Check role existance
     if argument not in roles:
         await msg.send("This group does not exist.")
         return
 
-    gid = msg.guild.id
+    # Create recentpings entry if none exist
     if gid not in recentpings:
         recentpings[gid] = {}
     recentserverpings = recentpings[gid]
     if argument not in recentserverpings:
         recentserverpings[argument] = 0
+
+    # Check fake role rate limits
     if recentserverpings[argument] + REPINGDELAY > time.time() and not msg.author.guild_permissions.manage_messages:
         return
     recentserverpings[argument] = time.time()
 
+    # Check server rate limit
+    if "fastping" in data:
+        authorRoleIDS = [role.id for role in msg.author.roles]
+        if "global" not in recentserverpings:
+            recentserverpings["global"] = 0
+        print(data["fastping"].intersection(authorRoleIDS), recentserverpings["global"] + REPINGDELAY, ">", time.time(), recentserverpings["global"] + REPINGDELAY > time.time())
+        if (len(data["fastping"].intersection(authorRoleIDS)) == 0) and recentserverpings["global"] + REPINGDELAY > time.time() and not msg.author.guild_permissions.manage_messages:
+            await msg.send("Please wait before sending another ping")
+            return
+        recentserverpings["global"] = time.time()
+
+    # Ping users
     roledata, members = roles[argument]
     mstring = ", ".join([f"<@{member}>" for member in members])
     await msg.send(f"Mentioning {argument}: " + mstring)
@@ -148,6 +168,86 @@ async def create(msg, argument, *args):
     if SAVE_INSTANT:
         saveDatabase(msg.guild.id)
     await msg.send(f"You created the fake role '{argument}'!")
+
+
+@bot.command()
+async def configure(msg, argument, *args):
+    guid = msg.guild.id
+    data, roles = check_guild(guid)
+    if not msg.author.guild_permissions.manage_roles:
+        await msg.send("You do not have permission to do this")
+        return
+    message = ""
+
+    if argument == "printdata":
+        print(data)
+        message = "See console"
+    elif argument == "printroles":
+        print(roles)
+        message = "See console"
+
+    # Cooldown related configuration:
+    # -------------------------------
+    elif argument == "globalcooldown" or argument == "gcd":
+        if args[0] == "enable":
+            if "fastping" not in data:
+                data["fastping"] = set()
+                message += "Enabling global cooldown"
+            else:
+                message += "Global cooldown was already enabled"
+
+        elif args[0] == "excluderoles":
+            if "fastping" not in data:
+                data["fastping"] = set()
+                message += "Global cooldown not yet enabled, enabling global cooldown\n"
+            if len(args) == 0:
+                message += "No roles were given\n"
+            else:
+                for role in args[1:]:
+                    if not role.isnumeric():
+                        message += role + " is not a role ID\n"
+                        continue
+                    data["fastping"].add(int(role))
+                    message += f"role with id {role} succesfully added\n"
+
+        elif args[0] == "getexcluded":
+            if "fastping" in data:
+                message += "Curent global cooldown ignoring list:\n" + "\n".join(str(a) for a in data["fastping"])
+            else:
+                message += "Global cooldown is disabled"
+
+        elif args[0] == "disable":
+            if "fastping" in data:
+                data.pop("fastping")
+                message += "Disabling global cooldown"
+            else:
+                message += "Global cooldown was not enabled"
+
+        elif args[0] == "includeroles":
+            message = ""
+            if "fastping" not in data:
+                data["fastping"] = set()
+                message += "Global cooldown not yet enabled, enabling global cooldown\n"
+            if len(args) == 0:
+                message += "No roles were given\n"
+            else:
+                for role in args[1:]:
+                    if not role.isnumeric():
+                        message += role + " is not a role ID\n"
+                        continue
+                    if int(role) not in data["fastping"]:
+                        message += role + " did not ignore the cooldown\n"
+                        continue
+                    data["fastping"].remove(int(role))
+                    message += f"role with id {role} succesfully removed\n"
+        else:
+            message = "subcommand not recognized"
+    # -------------------------------
+    else:
+        message = "command not recognized"
+    check_save(guid)
+    if len(message) > 0:
+        await msg.send(message)
 
 
 @bot.command()
@@ -196,11 +296,28 @@ async def save(msg):
 
 
 @bot.command()
-async def help(msg):
-    message = """join x \n - Join group x\nleave x\n - Leave group x\nping x\n - Mention everyone in the group x\nget\n - See your current groups\nlist\n - Show all existing groups"""
-    if msg.author.guild_permissions.manage_roles:
-        message += """\n**Requires 'Manage roles':**\ncreate x\n - Create a new group named x that anyone can join. add 'restricted' to make sure only people with 'manage roles' can edit this role.\ndelete x\n - Remove a existing group by name\nkick ID x\n - Remove a member from group x by userID\njoin x [uid]\n - Add a user to a group by UID"""
-    await msg.send(message)
+async def help(msg, *args):
+    if len(args) == 0:
+        message = """**Basic commands:**\njoin x \n - Join group x\nleave x\n - Leave group x\nping x\n - Mention everyone in the group x\nget\n - See your current groups\nlist\n - Show all existing groups"""
+        if msg.author.guild_permissions.manage_roles:
+            message += """\n**Requires 'Manage roles':**\ncreate x\n - Create a new group named x that anyone can join.\nhelp createrole\n - See additional options for create.\ndelete x\n - Remove a existing group by name\nkick ID x\n - Remove a member from group x by userID\njoin x ID\n - Add a user to a group by UID\nhelp globalcooldown\n - see cooldown configuration commands"""
+        await msg.send(message)
+    elif args[0] == "globalcooldown" and msg.author.guild_permissions.manage_roles:
+        message  = "**Requires 'Manage roles':**\n"
+        message += "configure globalcooldown ... | configure gcd ...\n - configure the global cooldown\n"
+        message += "enable\n - enables the global cooldown\n"
+        message += "disable\n - disable the global cooldown, erasing all cooldown data\n"
+        message += "excluderoles IDS\n - disables the global cooldown for the given roles (by id), and enables it globally\n"
+        message += "includeroles IDS\n - reenables the global cooldown for the given roles (by id), and enables it globally\n"
+        message += "getexcluded\n - see what role ID's currently ignore the global cooldown\n"
+
+        await msg.send(message)
+    elif args[0] == "createrole" and msg.author.guild_permissions.manage_roles:
+        message  = "**Requires 'Manage roles':**\n"
+        message += "create name options\n - Create a role with a name and optional options:\n"
+        message += "restricted\n - Make this role require manage roles to assign and deassign members.\n"
+
+        await msg.send(message)
 
 
 @bot.event
