@@ -208,7 +208,7 @@ async def configure(msg, argument, *args):
                         message += role + " is not a role ID\n"
                         continue
                     data["fastping"].add(int(role))
-                    message += f"role with id {role} succesfully added\n"
+                    message += f"role with id {role}, name {msg.guild.get_role(int(role))} succesfully added\n"
 
         elif args[0] == "getexcluded":
             if "fastping" in data:
@@ -242,7 +242,7 @@ async def configure(msg, argument, *args):
                         message += role + " did not ignore the cooldown\n"
                         continue
                     data["fastping"].remove(int(role))
-                    message += f"role with id {role} succesfully removed\n"
+                    message += f"role with id {role}, name {msg.guild.get_role(int(role))} succesfully removed\n"
         else:
             message = "subcommand not recognized"
     # -------------------------------
