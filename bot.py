@@ -75,7 +75,7 @@ async def leave(msg, argument):
 
 
 @bot.command()
-async def kick(msg, userID, argument):
+async def kick(msg, argument, userID):
     data, roles = check_guild(msg.guild.id)
     if not msg.author.guild_permissions.manage_roles:
         await msg.send("You do not have permission to do this")
@@ -303,7 +303,7 @@ async def help(msg, *args):
     if len(args) == 0:
         message = """**Basic commands:**\njoin x \n - Join group x\nleave x\n - Leave group x\nping x\n - Mention everyone in the group x\nget\n - See your current groups\nlist\n - Show all existing groups"""
         if msg.author.guild_permissions.manage_roles:
-            message += """\n**Requires 'Manage roles':**\ncreate x\n - Create a new group named x that anyone can join.\nhelp createrole\n - See additional options for create.\ndelete x\n - Remove a existing group by name\nkick ID x\n - Remove a member from group x by userID\njoin x ID\n - Add a user to a group by UID\nhelp globalcooldown\n - see cooldown configuration commands"""
+            message += """\n**Requires 'Manage roles':**\ncreate x\n - Create a new group named x that anyone can join.\nhelp create\n - See additional options for create.\ndelete x\n - Remove a existing group by name\nkick x ID\n - Remove a member from group x by userID\njoin x ID\n - Add a user to a group by UID\nhelp globalcooldown\n - see cooldown configuration commands"""
         await msg.send(message)
     elif args[0] == "globalcooldown" and msg.author.guild_permissions.manage_roles:
         message  = "**Requires 'Manage roles':**\n"
@@ -315,7 +315,7 @@ async def help(msg, *args):
         message += "getexcluded\n - see what role ID's currently ignore the global cooldown\n"
 
         await msg.send(message)
-    elif args[0] == "createrole" and msg.author.guild_permissions.manage_roles:
+    elif args[0] == "create" and msg.author.guild_permissions.manage_roles:
         message  = "**Requires 'Manage roles':**\n"
         message += "create name options\n - Create a role with a name and optional options:\n"
         message += "restricted\n - Make this role require manage roles to assign and deassign members.\n"
