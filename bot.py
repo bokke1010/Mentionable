@@ -1,6 +1,6 @@
 print("Opening bot.py")
 
-import pickle, time
+import pickle, time, discord
 from discord.ext import commands
 
 # =============================
@@ -9,11 +9,25 @@ REPINGDELAY = 20
 SAVE_INSTANT = True
 # =============================
 
+intents = discord.Intents.default()
+intents.members = True
+
 database = {}
 recentpings = {}
 
 print("Defining bot functions")
-bot = commands.Bot(command_prefix="+", help_command=None)
+bot = commands.Bot(command_prefix="+", help_command=None, intents=intents)
+
+def get_name(guild, id):
+    user = guild.get_member(id)
+    if user is not None:
+        nick = user.nick
+        if nick is not None:
+            return f"{id}: {user.nick} ({user.name})"
+        else:
+            return f"{id}: {user.name}"
+    else:
+        return f"unfound user with id {id}"
 
 
 def check_guild(guid):
@@ -34,25 +48,32 @@ def check_save(guid):
         saveDatabase(guid)
 
 
-def joinMember(guid, author, argument, memberID):
-    data, roles = check_guild(guid)
+def joinMember(guild, author, argument, memberID):
+    data, roles = check_guild(guild.id)
     if argument not in roles:
         return "This group does not exist."
     roledata, members = roles[argument]
     if "restricted" in roledata and not author.guild_permissions.manage_roles:
         return
+    if memberID in members:
+        if author.id == memberID:
+            return f"You were already in {argument}"
+        else:
+            return f"{get_name(guild, memberID)} was already in {argument}" 
     members.add(memberID)
-    check_save(guid)
+    check_save(guild.id)
     print("Joining group", argument, "as user", memberID)
     if author.id == memberID:
-        return f"You joined {argument}!"
+        return f"You joined {argument}"
     else:
-        return f"{memberID} joined {argument}" 
+        return f"{get_name(guild, memberID)} joined {argument}" 
 
 @bot.command()
 async def join(msg, argument, *args):
-    uid = int(args[0]) if len(args) > 0 else msg.author.id
-    response = joinMember(msg.guild.id, msg.author, argument, uid)
+    uids = [int(a) for a in args] if len(args) > 0 else [msg.author.id]
+    response = ""
+    for uid in uids:
+        response += joinMember(msg.guild, msg.author, argument, uid) + "\n"
     if response is not None:
         await msg.send(response)
 
@@ -78,7 +99,8 @@ async def leave(msg, argument):
 
 @bot.command()
 async def kick(msg, argument, userID):
-    data, roles = check_guild(msg.guild.id)
+    guid = msg.guild.id
+    data, roles = check_guild(guid)
     if not msg.author.guild_permissions.manage_roles:
         await msg.send("You do not have permission to do this")
         return
@@ -90,13 +112,14 @@ async def kick(msg, argument, userID):
         return
 
     userID = int(userID)
+    userString = get_name(msg.guild, userID)
     roledata, members = roles[argument]
     if userID in members:
         members.remove(userID)
         check_save(msg.guild.id)
-        await msg.send(f"This user was kicked from {argument}")
+        await msg.send(f"{userString} was kicked from {argument}")
     else:
-        await msg.send(f"This user is not part of {argument}")
+        await msg.send(f"{userString} is not part of {argument}")
 
 
 @bot.command()
@@ -159,8 +182,8 @@ async def get(msg, *args):
                 await msg.send("This person is not in any groups.")
         elif args[0] in roles:
             roledata, members = roles[args[0]]
-            await msg.send("This group contains the following user IDS: " +
-                        ", ".join(str(a) for a in members))
+            await msg.send("This group contains the following users:\n" +
+                        ", ".join(get_name(msg.guild, a) for a in members))
         else:
             await msg.send("Invalid user ID or role name")
     else:
@@ -189,8 +212,7 @@ async def create(msg, argument, *args):
             roledata["restricted"] = True
 
     roles[argument] = (roledata, set())
-    if SAVE_INSTANT:
-        saveDatabase(msg.guild.id)
+    check_save(msg.guild.id)
     await msg.send(f"You created the fake role '{argument}'!")
 
 
@@ -368,8 +390,7 @@ async def delete(msg, argument):
         return
 
     roles.pop(argument, None)
-    if SAVE_INSTANT:
-        saveDatabase(msg.guild.id)
+    check_save(msg.guild.id)
     await msg.send("Deleted fake role")
 
 
