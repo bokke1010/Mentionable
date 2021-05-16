@@ -146,15 +146,31 @@ async def ping(msg, argument):
 
 
 @bot.command()
-async def get(msg):
+async def get(msg, *args):
     data, roles = check_guild(msg.guild.id)
-    results = [key for key, (_, members) in roles.items()
-               if msg.author.id in members]
-    if len(results) > 0:
-        await msg.send("You are in the following groups: " +
-                       ", ".join(results))
+    if len(args) > 0 and msg.author.guild_permissions.manage_roles:
+        if args[0].isnumeric():
+            results = [key for key, (_, members) in roles.items()
+                    if int(args[0]) in members]
+            if len(results) > 0:
+                await msg.send("This person is in the following groups: " +
+                            ", ".join(results))
+            else:
+                await msg.send("This person is not in any groups.")
+        elif args[0] in roles:
+            roledata, members = roles[args[0]]
+            await msg.send("This group contains the following user IDS: " +
+                        ", ".join(str(a) for a in members))
+        else:
+            await msg.send("Invalid user ID or role name")
     else:
-        await msg.send("You are not in any groups.")
+        results = [key for key, (_, members) in roles.items()
+                if msg.author.id in members]
+        if len(results) > 0:
+            await msg.send("You are in the following groups: " +
+                        ", ".join(results))
+        else:
+            await msg.send("You are not in any groups.")
 
 
 @bot.command()
