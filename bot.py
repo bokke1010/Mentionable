@@ -154,6 +154,7 @@ async def ping(msg, argument):
 
     # Check fake role rate limits
     if recentserverpings[argument] + repingdelay > time.time() and not msg.author.guild_permissions.manage_messages:
+        await msg.send("Please wait before sending another ping")
         return
     recentserverpings[argument] = time.time()
 
