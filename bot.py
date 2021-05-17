@@ -132,6 +132,7 @@ async def ping(msg, argument):
     if argument not in roles:
         await msg.send("This group does not exist.")
         return
+    roledata, members = roles[argument]
 
     # Create recentpings entry if none exist
     if gid not in recentpings:
@@ -140,8 +141,15 @@ async def ping(msg, argument):
     if argument not in recentserverpings:
         recentserverpings[argument] = 0
 
+    # Get relevant cooldown
+    repingdelay = REPINGDELAY
+    if "pingdelay" in roledata:
+        repingdelay = data["pingdelay"]
+    elif "pingdelay" in data:
+        repingdelay = data["pingdelay"]
+
     # Check fake role rate limits
-    if recentserverpings[argument] + REPINGDELAY > time.time() and not msg.author.guild_permissions.manage_messages:
+    if recentserverpings[argument] + repingdelay > time.time() and not msg.author.guild_permissions.manage_messages:
         return
     recentserverpings[argument] = time.time()
 
@@ -150,8 +158,8 @@ async def ping(msg, argument):
         authorRoleIDS = [role.id for role in msg.author.roles]
         if "global" not in recentserverpings:
             recentserverpings["global"] = 0
-        print(data["fastping"].intersection(authorRoleIDS), recentserverpings["global"] + REPINGDELAY, ">", time.time(), recentserverpings["global"] + REPINGDELAY > time.time())
-        if (len(data["fastping"].intersection(authorRoleIDS)) == 0) and recentserverpings["global"] + REPINGDELAY > time.time() and not msg.author.guild_permissions.manage_messages:
+        print(data["fastping"].intersection(authorRoleIDS), recentserverpings["global"] + repingdelay, ">", time.time(), recentserverpings["global"] + repingdelay > time.time())
+        if (len(data["fastping"].intersection(authorRoleIDS)) == 0) and recentserverpings["global"] + repingdelay > time.time() and not msg.author.guild_permissions.manage_messages:
             await msg.send("Please wait before sending another ping")
             return
         recentserverpings["global"] = time.time()
@@ -163,7 +171,6 @@ async def ping(msg, argument):
             return
 
     # Ping users
-    roledata, members = roles[argument]
     mstring = ", ".join([f"<@{member}>" for member in members])
     await msg.send(f"Mentioning {argument}: " + mstring)
 
@@ -253,7 +260,7 @@ async def configure(msg, argument, *args):
 
     # Cooldown related configuration:
     # -------------------------------
-    elif argument == "globalcooldown" or argument == "gcd":
+    elif (argument == "globalcooldown" or argument == "gcd") and len(args) > 0:
         if args[0] == "enable":
             if "fastping" not in data:
                 data["fastping"] = set()
@@ -265,7 +272,7 @@ async def configure(msg, argument, *args):
             if "fastping" not in data:
                 data["fastping"] = set()
                 message += "Global cooldown not yet enabled, enabling global cooldown\n"
-            if len(args) == 0:
+            if len(args) == 1:
                 message += "No roles were given\n"
             else:
                 for role in args[1:]:
@@ -296,7 +303,7 @@ async def configure(msg, argument, *args):
             if "fastping" not in data:
                 data["fastping"] = set()
                 message += "Global cooldown not yet enabled, enabling global cooldown\n"
-            if len(args) == 0:
+            if len(args) == 1:
                 message += "No roles were given\n"
             else:
                 for role in args[1:]:
@@ -310,10 +317,10 @@ async def configure(msg, argument, *args):
                     message += f"role with id {role}, name {msg.guild.get_role(int(role))} succesfully removed\n"
         else:
             message = "subcommand not recognized"
+
     # -------------------------------
     # ping restriction configuration:
-
-    elif argument == "pingrestrictions" or argument == "pr":
+    elif (argument == "pingrestrictions" or argument == "pr") and len(args) > 0:
         if args[0] == "enable":
             if "restrictping" not in data:
                 data["restrictping"] = set()
@@ -325,7 +332,7 @@ async def configure(msg, argument, *args):
             if "restrictping" not in data:
                 data["restrictping"] = set()
                 message += "Ping restriction not yet enabled, enabling ping restriction\n"
-            if len(args) == 0:
+            if len(args) == 1:
                 message += "No roles were allowed access\n"
             else:
                 for role in args[1:]:
@@ -356,7 +363,7 @@ async def configure(msg, argument, *args):
             if "restrictping" not in data:
                 data["restrictping"] = set()
                 message += "Ping restrictions not yet enabled, enabling ping restrictions\n"
-            if len(args) == 0:
+            if len(args) == 1:
                 message += "No roles were given\n"
             else:
                 for role in args[1:]:
@@ -372,6 +379,47 @@ async def configure(msg, argument, *args):
             message = "subcommand not recognized"
 
     # -------------------------------
+    # role configuration configuration
+    elif argument == "role" and len(args) > 1:
+        if args[0] not in roles:
+            message += "Role not recognized"
+        else:
+            roledata, members = roles[args[0]]
+            action = args[1]
+            if action == "restricted":
+                roledata["restricted"] = True
+            elif action == "open":
+                roledata.pop("restricted")
+            elif action == "cooldown":
+                if len(args) == 2:
+                    message = "No cooldown was given"
+                elif args[2] == "reset":
+                    roledata.pop("pingdelay")
+                    message = f"Set delay for role {args[0]} to the default value"
+                elif args[2].isnumeric():
+                    newcooldown = float(args[2])
+                    roledata["pingdelay"] = newcooldown
+                    message = f"Set delay for role {args[0]} to {newcooldown}"
+                else:
+                    message = "invalid role cooldown command"
+
+    # -------------------------------
+    # cooldown configuration
+    elif argument == "defaultcooldown" and len(args) > 0:
+        if len(args) == 0:
+            cd = data["pingdelay"] if "pingdelay" in data else REPINGDELAY
+            message = f"no cooldown specified, current cooldown is {cd}"
+        elif args[0] == "reset":
+            if "pingdelay" in data:
+                data.pop("pingdelay")
+            message = "Reset the ping cooldown"
+        elif args[0].isnumeric():
+            data["pingdelay"] = float(args[0])
+            message += f"Set the default pingdelay to {args[0]}"
+        else:
+            cd = data["pingdelay"] if "pingdelay" in data else REPINGDELAY
+            message = f"given cooldown is invalid, current cooldown is {cd}"
+
     else:
         message = "command not recognized"
     check_save(guid)
@@ -425,13 +473,32 @@ async def save(msg):
 
 @bot.command()
 async def help(msg, *args):
+    message = ""
     if len(args) == 0:
-        message = """**Basic commands:**\njoin x \n - Join group x\nleave x\n - Leave group x\nping x\n - Mention everyone in the group x\nget\n - See your current groups\nlist\n - Show all existing groups"""
+        message += "**Basic commands:**"
+        message += "\njoin x \n - Join group x"
+        message += "\nleave x\n - Leave group x"
+        message += "\nping x\n - Mention everyone in the group x"
+        message += "\nget\n - See your current groups"
+        message += "\nlist\n - Show all existing groups"
         if msg.author.guild_permissions.manage_roles:
-            message += """\n**Requires 'Manage roles':**\ncreate x\n - Create a new group named x that anyone can join.\nhelp create\n - See additional options for create.\ndelete x\n - Remove a existing group by name\nkick x ID\n - Remove a member from group x by userID\njoin x ID\n - Add a user to a group by UID\nhelp globalcooldown\n - see cooldown configuration commands\nhelp pingrestrictions\n - see ping restriction configuration commands"""
-        await msg.send(message)
+            message += "\nhelp mod\n - show mod commands"
+
+    elif args[0] == "mod":
+        message += "\n**Requires 'Manage roles':**"
+        message += "\ncreate x\n - Create a new group named x that anyone can join."
+        message += "\ndelete x\n - Remove a existing group by name"
+        message += "\nkick x ID\n - Remove a member from group x by userID"
+        message += "\njoin x ID\n - Add a user to a group by userID"
+        message += "\nget ID\n - Get all roles a user is in by userID"
+        message += "\nget role\n - Get all users in a role"
+        message += "\nhelp globalcooldown\n - see cooldown configuration commands"
+        message += "\nhelp pingrestrictions\n - see ping restriction configuration commands"
+        message += "\nhelp pingcooldown\n - see role ping specific cooldown commands"
+        message += "\nhelp roleconfigure\n - see role configuration help"
+
     elif args[0] == "globalcooldown" and msg.author.guild_permissions.manage_roles:
-        message  = "**Requires 'Manage roles':**\n"
+        message += "**Requires 'Manage roles':**\n"
         message += "configure globalcooldown ... | configure gcd ...\n - configure the global cooldown\n"
         message += "enable\n - enables the global cooldown\n"
         message += "disable\n - disable the global cooldown, erasing all cooldown data\n"
@@ -439,9 +506,8 @@ async def help(msg, *args):
         message += "includeroles IDS\n - reenables the global cooldown for the given roles (by id), and enables it globally\n"
         message += "getexcluded\n - see what role ID's currently ignore the global cooldown\n"
 
-        await msg.send(message)
     elif args[0] == "pingrestrictions" and msg.author.guild_permissions.manage_roles:
-        message  = "**Requires 'Manage roles':**\n"
+        message += "**Requires 'Manage roles':**\n"
         message += "configure pingrestrictions ... | configure pr ...\n - configure the restrictions\n"
         message += "enable\n - enables the restrictions\n"
         message += "disable\n - disable the restrictions, erasing all related data\n"
@@ -449,13 +515,21 @@ async def help(msg, *args):
         message += "includeroles IDS\n - reenables the restrictions for the given roles (by id), and enables it globally\n"
         message += "getexcluded\n - see what role ID's currently ignore the restrictions\n"
 
-        await msg.send(message)
-    elif args[0] == "create" and msg.author.guild_permissions.manage_roles:
-        message  = "**Requires 'Manage roles':**\n"
-        message += "create name options\n - Create a role with a name and optional options:\n"
-        message += "restricted\n - Make this role require manage roles to assign and deassign members.\n"
+    elif args[0] == "pingcooldown" and msg.author.guild_permissions.manage_roles:
+        message += "**Requires 'Manage roles':**\n"
+        message += "configure defaultcooldown [time in seconds]\n - Configure the default ping cooldown for all roles\n"
+        message += "configure role [role] cooldown [time in seconds]\n - set the ping cooldown for a single role\n"
+        message += "configure role [role] cooldown reset\n - Reset the ping cooldown for a role to the server default\n"
 
-        await msg.send(message)
+    elif args[0] == "roleconfigure" and msg.author.guild_permissions.manage_roles:
+        message += "**Requires 'Manage roles':**\n"
+        message += "Role properties can be added by putting them after '+create [rolename]' or by using '+configure role [rolename] [action]\n"
+        message += "The available actions are 'restricted' and 'open', which add and remove the restricted property from a role respectively\n"
+        message += "role properties:\n"
+        message += "restricted\n - Make this role require manage roles to assign and unassign members.\n"
+        message += "See +help pingcooldown to configure the role specific ping cooldowns\n"
+
+    await msg.send(message)
 
 
 @bot.event
