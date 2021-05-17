@@ -73,7 +73,11 @@ async def join(msg, argument, *args):
     uids = [int(a) for a in args] if len(args) > 0 else [msg.author.id]
     response = ""
     for uid in uids:
-        response += joinMember(msg.guild, msg.author, argument, uid) + "\n"
+        membResponse = joinMember(msg.guild, msg.author, argument, uid) + "\n"
+        if len(response) + len(membResponse) > 1990:
+            await msg.send(response + "...")
+            response = ""
+        response += membResponse
     if response is not None:
         await msg.send(response)
 
