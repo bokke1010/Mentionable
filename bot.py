@@ -171,8 +171,14 @@ async def ping(msg, argument):
             return
 
     # Ping users
-    mstring = ", ".join([f"<@{member}>" for member in members])
-    await msg.send(f"Mentioning {argument}: " + mstring)
+    message = f"Mentioning {argument}: "
+    for member in members:
+        mstring = f"<@{member}>"
+        if len(message) + len(mstring) > 1990:
+            await msg.send(message)
+            message = ""
+        message += mstring + ", "
+    await msg.send(message)
 
 
 @bot.command()
@@ -183,14 +189,24 @@ async def get(msg, *args):
             results = [key for key, (_, members) in roles.items()
                     if int(args[0]) in members]
             if len(results) > 0:
-                await msg.send("This person is in the following groups: " +
-                            ", ".join(results))
+                message = "This person is in the following groups: "
+                for role in results:
+                    if len(message) + len(role) > 1990:
+                        await msg.send(message + "...")
+                        message = ""
+                    message += role + ", "
+                await msg.send(message)
             else:
                 await msg.send("This person is not in any groups.")
         elif args[0] in roles:
             roledata, members = roles[args[0]]
-            await msg.send("This group contains the following users:\n" +
-                        ", ".join(get_name(msg.guild, a) for a in members))
+            message = "This group contains the following users:\n"
+            for name in (get_name(msg.guild, a) for a in members):
+                if len(message) + len(name) > 1990:
+                    await msg.send(message + "...")
+                    message = ""
+                message += name + ", "
+            await msg.send(message)
         else:
             await msg.send("Invalid user ID or role name")
     else:
