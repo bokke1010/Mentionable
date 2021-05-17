@@ -70,7 +70,7 @@ def joinMember(guild, author, argument, memberID):
 
 @bot.command()
 async def join(msg, argument, *args):
-    uids = [int(a) for a in args] if len(args) > 0 else [msg.author.id]
+    uids = [int(a) for a in args] if len(args) > 0 and msg.author.guild_permissions.manage_roles else [msg.author.id]
     response = ""
     for uid in uids:
         membResponse = joinMember(msg.guild, msg.author, argument, uid) + "\n"
