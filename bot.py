@@ -71,6 +71,7 @@ def joinMember(guild, author, argument, memberID):
 @bot.command()
 async def join(msg, argument, *args):
     uids = [int(a) for a in args] if len(args) > 0 and msg.author.guild_permissions.manage_roles else [msg.author.id]
+    argument = argument.lower()
     response = ""
     for uid in uids:
         membResponse = joinMember(msg.guild, msg.author, argument, uid) + "\n"
@@ -85,6 +86,7 @@ async def join(msg, argument, *args):
 @bot.command()
 async def leave(msg, argument):
     guid = msg.guild.id
+    argument = argument.lower()
     data, roles = check_guild(guid)
     if argument in roles:
         roledata, members = roles[argument]
@@ -104,6 +106,7 @@ async def leave(msg, argument):
 @bot.command()
 async def kick(msg, argument, userID):
     guid = msg.guild.id
+    argument = argument.lower()
     data, roles = check_guild(guid)
     if not msg.author.guild_permissions.manage_roles:
         await msg.send("You do not have permission to do this")
@@ -129,8 +132,9 @@ async def kick(msg, argument, userID):
 @bot.command()
 async def ping(msg, argument):
     # Get guild data
-    gid = msg.guild.id
-    data, roles = check_guild(gid)
+    guid = msg.guild.id
+    argument = argument.lower()
+    data, roles = check_guild(guid)
 
     # Check role existance
     if argument not in roles:
@@ -145,9 +149,9 @@ async def ping(msg, argument):
             return
 
     # Create recentpings entry if none exist
-    if gid not in recentpings:
-        recentpings[gid] = {}
-    recentserverpings = recentpings[gid]
+    if guid not in recentpings:
+        recentpings[guid] = {}
+    recentserverpings = recentpings[guid]
     if argument not in recentserverpings:
         recentserverpings[argument] = 0
 
@@ -204,8 +208,8 @@ async def get(msg, *args):
                 await msg.send(message)
             else:
                 await msg.send("This person is not in any groups.")
-        elif args[0] in roles:
-            roledata, members = roles[args[0]]
+        elif args[0].lower() in roles:
+            roledata, members = roles[args[0].lower()]
             message = "This group contains the following users:\n"
             for name in (get_name(msg.guild, a) for a in members):
                 if len(message) + len(name) > 1980:
@@ -227,6 +231,7 @@ async def get(msg, *args):
 
 @bot.command()
 async def create(msg, argument, *args):
+    argument = argument.lower()
     data, roles = check_guild(msg.guild.id)
     if not msg.author.guild_permissions.manage_roles:
         await msg.send("You do not have permission to do this")
@@ -247,6 +252,7 @@ async def create(msg, argument, *args):
 
 @bot.command()
 async def rename(msg, oldname, newname):
+    oldname, newname = oldname.lower(), newname.lower()
     data, roles = check_guild(msg.guild.id)
     if not msg.author.guild_permissions.manage_roles:
         await msg.send("You do not have permission to do this")
@@ -267,6 +273,7 @@ async def rename(msg, oldname, newname):
 @bot.command()
 async def configure(msg, argument, *args):
     guid = msg.guild.id
+    argument = argument.lower()
     data, roles = check_guild(guid)
     if not msg.author.guild_permissions.manage_roles:
         await msg.send("You do not have permission to do this")
@@ -403,10 +410,11 @@ async def configure(msg, argument, *args):
     # -------------------------------
     # role configuration configuration
     elif argument == "role" and len(args) > 1:
-        if args[0] not in roles:
+        role = args[0].lower()
+        if role not in roles:
             message += "Role not recognized"
         else:
-            roledata, members = roles[args[0]]
+            roledata, members = roles[role]
             action = args[1]
             if action == "restricted":
                 roledata["restricted"] = True
@@ -418,11 +426,11 @@ async def configure(msg, argument, *args):
                 elif args[2] == "reset":
                     if "pingdelay" in roledata:
                         roledata.pop("pingdelay")
-                    message = f"Set delay for role {args[0]} to the default value"
+                    message = f"Set delay for role {role} to the default value"
                 elif args[2].isnumeric():
                     newcooldown = float(args[2])
                     roledata["pingdelay"] = newcooldown
-                    message = f"Set delay for role {args[0]} to {newcooldown}"
+                    message = f"Set delay for role {role} to {newcooldown}"
                 else:
                     message = "invalid role cooldown command"
 
@@ -452,6 +460,7 @@ async def configure(msg, argument, *args):
 
 @bot.command()
 async def delete(msg, argument):
+    argument = argument.lower()
     data, roles = check_guild(msg.guild.id)
     if not msg.author.guild_permissions.manage_roles:
         await msg.send("You do not have permission to do this")
@@ -515,6 +524,7 @@ async def help(msg, *args):
         message += "\njoin x ID\n - Add a user to a group by userID"
         message += "\nget ID\n - Get all roles a user is in by userID"
         message += "\nget role\n - Get all users in a role"
+        message += "\nrename oldname newname\n - rename a role"
         message += "\nhelp globalcooldown\n - see cooldown configuration commands"
         message += "\nhelp pingrestrictions\n - see ping restriction configuration commands"
         message += "\nhelp pingcooldown\n - see role ping specific cooldown commands"
