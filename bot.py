@@ -74,7 +74,7 @@ async def join(msg, argument, *args):
     response = ""
     for uid in uids:
         membResponse = joinMember(msg.guild, msg.author, argument, uid) + "\n"
-        if len(response) + len(membResponse) > 1990:
+        if len(response) + len(membResponse) > 1980:
             await msg.send(response + "...")
             response = ""
         response += membResponse
@@ -138,6 +138,12 @@ async def ping(msg, argument):
         return
     roledata, members = roles[argument]
 
+    if "restrictping" in data:
+        authorRoleIDS = [role.id for role in msg.author.roles]
+        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0) and not msg.author.guild_permissions.manage_messages:
+            await msg.send("You do not have permissions to ping")
+            return
+
     # Create recentpings entry if none exist
     if gid not in recentpings:
         recentpings[gid] = {}
@@ -168,18 +174,12 @@ async def ping(msg, argument):
             await msg.send("Please wait before sending another ping")
             return
         recentserverpings["global"] = time.time()
-    
-    if "restrictping" in data:
-        authorRoleIDS = [role.id for role in msg.author.roles]
-        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0) and not msg.author.guild_permissions.manage_messages:
-            await msg.send("You do not have permissions to ping")
-            return
 
     # Ping users
     message = f"Mentioning {argument}: "
     for member in members:
         mstring = f"<@{member}>"
-        if len(message) + len(mstring) > 1990:
+        if len(message) + len(mstring) > 1980:
             await msg.send(message)
             message = ""
         message += mstring + ", "
@@ -191,15 +191,16 @@ async def get(msg, *args):
     data, roles = check_guild(msg.guild.id)
     if len(args) > 0 and msg.author.guild_permissions.manage_roles:
         if args[0].isnumeric():
+            UID = int(args[0])
             results = [key for key, (_, members) in roles.items()
-                    if int(args[0]) in members]
+                    if UID in members]
             if len(results) > 0:
-                message = "This person is in the following groups: "
+                message = get_name(UID) + " is in the following groups: "
                 for role in results:
-                    if len(message) + len(role) > 1990:
+                    if len(message) + len(role) > 1980:
                         await msg.send(message + "...")
                         message = ""
-                    message += role + ", "
+                    message += role + ",   "
                 await msg.send(message)
             else:
                 await msg.send("This person is not in any groups.")
@@ -207,10 +208,10 @@ async def get(msg, *args):
             roledata, members = roles[args[0]]
             message = "This group contains the following users:\n"
             for name in (get_name(msg.guild, a) for a in members):
-                if len(message) + len(name) > 1990:
+                if len(message) + len(name) > 1980:
                     await msg.send(message + "...")
                     message = ""
-                message += name + ", "
+                message += name + " >|< "
             await msg.send(message)
         else:
             await msg.send("Invalid user ID or role name")
@@ -415,7 +416,8 @@ async def configure(msg, argument, *args):
                 if len(args) == 2:
                     message = "No cooldown was given"
                 elif args[2] == "reset":
-                    roledata.pop("pingdelay")
+                    if "pingdelay" in roledata:
+                        roledata.pop("pingdelay")
                     message = f"Set delay for role {args[0]} to the default value"
                 elif args[2].isnumeric():
                     newcooldown = float(args[2])
