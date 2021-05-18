@@ -210,12 +210,12 @@ async def get(msg, *args):
                 await msg.send("This person is not in any groups.")
         elif args[0].lower() in roles:
             roledata, members = roles[args[0].lower()]
-            message = "This group contains the following users:\n"
+            message = f"This group contains the following {len(members)} users:\n"
             for name in (get_name(msg.guild, a) for a in members):
                 if len(message) + len(name) > 1980:
                     await msg.send(message + "...")
                     message = ""
-                message += name + " >|< "
+                message += name + "\n"
             await msg.send(message)
         else:
             await msg.send("Invalid user ID or role name")
