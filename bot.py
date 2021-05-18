@@ -57,9 +57,9 @@ def joinMember(guild, author, argument, memberID):
         return
     if memberID in members:
         if author.id == memberID:
-            return f"You were already in {argument}"
+            return f"You were already in the {argument} group"
         else:
-            return f"{get_name(guild, memberID)} was already in {argument}" 
+            return f"{get_name(guild, memberID)} was already in the {argument} group" 
     members.add(memberID)
     check_save(guild.id)
     print("Joining group", argument, "as user", memberID)
@@ -135,6 +135,7 @@ async def ping(msg, argument):
     guid = msg.guild.id
     argument = argument.lower()
     data, roles = check_guild(guid)
+    restrictionsApply = not msg.author.guild_permissions.manage_messages
 
     # Check role existance
     if argument not in roles:
@@ -142,18 +143,17 @@ async def ping(msg, argument):
         return
     roledata, members = roles[argument]
 
+    # Check if the role can be pinged
+    if "noping" in roledata and restrictionsApply:
+        await msg.send("This role cannot be mentioned normally")
+        return
+
+    # Check if user is allowed to ping a role
     if "restrictping" in data:
         authorRoleIDS = [role.id for role in msg.author.roles]
-        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0) and not msg.author.guild_permissions.manage_messages:
+        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0) and restrictionsApply:
             await msg.send("You do not have permissions to ping")
             return
-
-    # Create recentpings entry if none exist
-    if guid not in recentpings:
-        recentpings[guid] = {}
-    recentserverpings = recentpings[guid]
-    if argument not in recentserverpings:
-        recentserverpings[argument] = 0
 
     # Get relevant cooldown
     repingdelay = REPINGDELAY
@@ -162,19 +162,28 @@ async def ping(msg, argument):
     elif "pingdelay" in data:
         repingdelay = data["pingdelay"]
 
+    # Create recentpings entry if none exist
+    if guid not in recentpings:
+        recentpings[guid] = {}
+    recentserverpings = recentpings[guid]
+    if argument not in recentserverpings:
+        recentserverpings[argument] = 0
+
     # Check fake role rate limits
-    if recentserverpings[argument] + repingdelay > time.time() and not msg.author.guild_permissions.manage_messages:
+    if recentserverpings[argument] + repingdelay > time.time() and restrictionsApply:
         await msg.send("Please wait before sending another ping")
         return
     recentserverpings[argument] = time.time()
 
-    # Check server rate limit
+    # Check server wide rate limit
     if "fastping" in data:
-        authorRoleIDS = [role.id for role in msg.author.roles]
         if "global" not in recentserverpings:
             recentserverpings["global"] = 0
-        print(data["fastping"].intersection(authorRoleIDS), recentserverpings["global"] + repingdelay, ">", time.time(), recentserverpings["global"] + repingdelay > time.time())
-        if (len(data["fastping"].intersection(authorRoleIDS)) == 0) and recentserverpings["global"] + repingdelay > time.time() and not msg.author.guild_permissions.manage_messages:
+
+        authorRoleIDS = [role.id for role in msg.author.roles]
+        cooldownApplies = len(data["fastping"].intersection(authorRoleIDS)) == 0
+        withinCooldown = recentserverpings["global"] + repingdelay > time.time()
+        if cooldownApplies and withinCooldown and restrictionsApply:
             await msg.send("Please wait before sending another ping")
             return
         recentserverpings["global"] = time.time()
@@ -242,8 +251,10 @@ async def create(msg, argument, *args):
 
     roledata = {}
     for arg in args:
-        if arg == "restricted":
+        if arg == "restrict_join":
             roledata["restricted"] = True
+        elif arg == "restrict_ping":
+            roledata["noping"] = True
 
     roles[argument] = (roledata, set())
     check_save(msg.guild.id)
@@ -416,10 +427,18 @@ async def configure(msg, argument, *args):
         else:
             roledata, members = roles[role]
             action = args[1]
-            if action == "restricted":
+            if action == "restrict_join":
                 roledata["restricted"] = True
-            elif action == "open":
+                message = "This role can no longer be joined normally"
+            elif action == "allow_join":
                 roledata.pop("restricted")
+                message = "This role can now be joined normally"
+            elif action == "restrict_ping":
+                roledata["noping"] = True
+                message = "This role can no longer be pinged normally"
+            elif action == "allow_ping":
+                roledata.pop("noping")
+                message = "This role can now be pinged normally"
             elif action == "cooldown":
                 if len(args) == 2:
                     message = "No cooldown was given"
@@ -556,10 +575,12 @@ async def help(msg, *args):
 
     elif args[0] == "roleconfigure" and msg.author.guild_permissions.manage_roles:
         message += "**Requires 'Manage roles':**\n"
-        message += "Role properties can be added by putting them after '+create [rolename]' or by using '+configure role [rolename] [action]\n"
-        message += "The available actions are 'restricted' and 'open', which add and remove the restricted property from a role respectively\n"
-        message += "role properties:\n"
-        message += "restricted\n - Make this role require manage roles to assign and unassign members.\n"
+        message += "Role properties can be added by putting them after '+create [action]' or by using '+configure role [rolename] [action]\n"
+        message += "actions:\n"
+        message += "restrict_join\n - Requires manage messages to join or leave\n"
+        message += "allow_join\n - No longer requires manage messages to join or leave\n"
+        message += "restrict_ping\n - Requires manage messages to ping\n"
+        message += "allow_ping\n - No longer requires manage messages to ping\n"
         message += "See +help pingcooldown to configure the role specific ping cooldowns\n"
 
     await msg.send(message)
