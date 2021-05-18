@@ -492,6 +492,22 @@ async def delete(msg, argument):
     check_save(msg.guild.id)
     await msg.send("Deleted fake role")
 
+@bot.command()
+async def resetCooldown(msg, argument):
+    argument = argument.lower()
+    guid = msg.guild.id
+    data, roles = check_guild(guid)
+    if not msg.author.guild_permissions.manage_roles:
+        await msg.send("You do not have permission to do this")
+        return
+    elif argument not in roles:
+        await msg.send("This role does not exist.")
+        return
+    if guid not in recentpings:
+        recentpings[guid] = {}
+    recentserverpings = recentpings[guid]
+    recentserverpings[argument] = 0
+    await msg.send("Reset role ping cooldown")
 
 @bot.command()
 async def list(msg):
@@ -572,15 +588,16 @@ async def help(msg, *args):
         message += "configure defaultcooldown [time in seconds]\n - Configure the default ping cooldown for all roles\n"
         message += "configure role [role] cooldown [time in seconds]\n - set the ping cooldown for a single role\n"
         message += "configure role [role] cooldown reset\n - Reset the ping cooldown for a role to the server default\n"
+        message += "resetCooldown [role]\n - Reset the ping cooldown for a role, allowing it to be mentioned again\n"
 
     elif args[0] == "roleconfigure" and msg.author.guild_permissions.manage_roles:
         message += "**Requires 'Manage roles':**\n"
         message += "Role properties can be added by putting them after '+create [action]' or by using '+configure role [rolename] [action]\n"
         message += "actions:\n"
         message += "restrict_join\n - Requires manage messages to join or leave\n"
-        message += "allow_join\n - No longer requires manage messages to join or leave\n"
+        message += "allow_join\n - (default) No longer requires manage messages to join or leave\n"
         message += "restrict_ping\n - Requires manage messages to ping\n"
-        message += "allow_ping\n - No longer requires manage messages to ping\n"
+        message += "allow_ping\n - (default) No longer requires manage messages to ping\n"
         message += "See +help pingcooldown to configure the role specific ping cooldowns\n"
 
     await msg.send(message)
