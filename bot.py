@@ -7,6 +7,8 @@ from discord.ext import commands
 # Edit these values to change bot functionality:
 REPINGDELAY = 20
 SAVE_INSTANT = True
+# Extra bot functionality besides the original goal:
+BOT_EXTRA_ROLELOGS = True
 # =============================
 
 intents = discord.Intents.default()
@@ -149,9 +151,9 @@ async def ping(msg, argument):
         return
 
     # Check if user is allowed to ping a role
-    if "restrictping" in data:
+    if "restrictping" in data and restrictionsApply:
         authorRoleIDS = [role.id for role in msg.author.roles]
-        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0) and restrictionsApply:
+        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0):
             await msg.send("You do not have permissions to ping")
             return
 
@@ -610,6 +612,77 @@ async def on_command_error(ctx, error):
         return
     raise error
 
+# --------------------------------
+# Miscellaneous features:
+
+if BOT_EXTRA_ROLELOGS:
+    async def sendRoleChangeMessages(roles, data, name):
+        for role in roles:
+            if role.id in data:
+                channelID, message = data[role.id]
+                formattedMessage = message.format(role = role, name = name)
+                channel = bot.get_channel(channelID)
+                await channel.send(formattedMessage)
+
+    @bot.event
+    async def on_member_update(before, after):
+        guid = after.guild.id
+        data, _ = check_guild(guid)
+        rold, rnew = set(before.roles), set(after.roles)
+        rolesRemoved, rolesAdded = rold - rnew, rnew - rold
+        if len(rolesAdded) and "roleLogAdd" in data:
+            await sendRoleChangeMessages(rolesAdded, data["roleLogAdd"], after.name)
+        if len(rolesRemoved) and "roleLogRemove" in data:
+            await sendRoleChangeMessages(rolesRemoved, data["roleLogRemove"], after.name)
+
+    
+    async def updateRoleChangeMessages(msg, key, roleID, channelID, message):
+        guid = msg.guild.id
+        data, _ = check_guild(guid)
+        if not msg.author.guild_permissions.manage_roles:
+            await msg.send("You do not have permission to do this")
+            return
+        if key not in data:
+            data[key] = {}
+        roleChangeData = data[key]
+        channelID, roleID = int(channelID), int(roleID)
+        if channelID == 0:
+            if roleID in roleChangeData:
+                roleChangeData.pop(roleID)
+                check_save(guid)
+                await msg.send("Removed role from role detection")
+            else:
+                await msg.send("Role was not in role detection")
+        else:
+            roleChangeData[roleID] = (channelID, message)
+            check_save(guid)
+            await msg.send("Added role to role detection")
+
+
+    @bot.command()
+    async def onRoleAdd(msg, roleID, channelID, message):
+        await updateRoleChangeMessages(msg, "roleLogAdd", roleID, channelID, message)
+        
+        
+    @bot.command()
+    async def onRoleRemove(msg, roleID, channelID, message):
+        await updateRoleChangeMessages(msg, "roleLogRemove", roleID, channelID, message)
+
+    
+    @bot.command()
+    async def roleLogList(msg):
+        guid = msg.guild.id
+        data, _ = check_guild(guid)
+        if not msg.author.guild_permissions.manage_roles:
+            await msg.send("You do not have permission to do this")
+            return
+        roleRemove = data["roleLogRemove"] if "roleLogRemove" in data else "None"
+        roleAdd = data["roleLogAdd"] if "roleLogAdd" in data else "None"
+        await msg.send(f"Remove watchlist: {roleRemove}, add watchlist: {roleAdd}")
+
+
+# ----------------------------
+# Bot starting code:
 
 def main():
     print("reading token")
