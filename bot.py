@@ -655,14 +655,15 @@ if BOT_EXTRA_ROLELOGS:
         if channelID == 0:
             if roleID in roleChangeData:
                 roleChangeData.pop(roleID)
-                check_save(guid)
                 await msg.send("Removed role from role detection")
             else:
                 await msg.send("Role was not in role detection")
+            if len(roleChangeData) == 0:
+                data.pop(key)
         else:
             roleChangeData[roleID] = (channelID, message)
-            check_save(guid)
             await msg.send("Added role to role detection")
+        check_save(guid)
 
     @bot.command()
     async def onRoleAdd(msg, roleID, channelID, message):
@@ -674,11 +675,11 @@ if BOT_EXTRA_ROLELOGS:
 
     @bot.command()
     async def roleLogList(msg):
-        guid = msg.guild.id
-        data, _ = check_guild(guid)
         if not msg.author.guild_permissions.manage_roles:
             await msg.send("You do not have permission to do this")
             return
+        guid = msg.guild.id
+        data, _ = check_guild(guid)
         roleRemove = data["roleLogRemove"] if "roleLogRemove" in data else "None"
         roleAdd = data["roleLogAdd"] if "roleLogAdd" in data else "None"
         await msg.send(f"Remove watchlist: {roleRemove}, add watchlist: {roleAdd}")
