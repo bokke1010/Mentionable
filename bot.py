@@ -1,6 +1,6 @@
-print("Opening bot.py")
-
-import pickle, time, discord
+import pickle
+import time
+import discord
 from discord.ext import commands
 
 # =============================
@@ -19,6 +19,7 @@ recentpings = {}
 
 print("Defining bot functions")
 bot = commands.Bot(command_prefix="+", help_command=None, intents=intents)
+
 
 def get_name(guild, id):
     user = guild.get_member(id)
@@ -61,14 +62,15 @@ def joinMember(guild, author, argument, memberID):
         if author.id == memberID:
             return f"You were already in the {argument} group"
         else:
-            return f"{get_name(guild, memberID)} was already in the {argument} group" 
+            return f"{get_name(guild, memberID)} was already in the {argument} group"
     members.add(memberID)
     check_save(guild.id)
     print("Joining group", argument, "as user", memberID)
     if author.id == memberID:
         return f"You joined {argument}"
     else:
-        return f"{get_name(guild, memberID)} joined {argument}" 
+        return f"{get_name(guild, memberID)} joined {argument}"
+
 
 @bot.command()
 async def join(msg, argument, *args):
@@ -208,7 +210,7 @@ async def get(msg, *args):
         if args[0].isnumeric():
             UID = int(args[0])
             results = [key for key, (_, members) in roles.items()
-                    if UID in members]
+                       if UID in members]
             if len(results) > 0:
                 message = get_name(UID) + " is in the following groups: "
                 for role in results:
@@ -232,10 +234,10 @@ async def get(msg, *args):
             await msg.send("Invalid user ID or role name")
     else:
         results = [key for key, (_, members) in roles.items()
-                if msg.author.id in members]
+                   if msg.author.id in members]
         if len(results) > 0:
             await msg.send("You are in the following groups: " +
-                        ", ".join(results))
+                           ", ".join(results))
         else:
             await msg.send("You are not in any groups.")
 
@@ -494,6 +496,7 @@ async def delete(msg, argument):
     check_save(msg.guild.id)
     await msg.send("Deleted fake role")
 
+
 @bot.command()
 async def resetCooldown(msg, argument):
     argument = argument.lower()
@@ -510,6 +513,7 @@ async def resetCooldown(msg, argument):
     recentserverpings = recentpings[guid]
     recentserverpings[argument] = 0
     await msg.send("Reset role ping cooldown")
+
 
 @bot.command()
 async def list(msg):
@@ -620,7 +624,7 @@ if BOT_EXTRA_ROLELOGS:
         for role in roles:
             if role.id in data:
                 channelID, message = data[role.id]
-                formattedMessage = message.format(role = role, name = name)
+                formattedMessage = message.format(role=role, name=name)
                 channel = bot.get_channel(channelID)
                 await channel.send(formattedMessage)
 
@@ -635,17 +639,19 @@ if BOT_EXTRA_ROLELOGS:
         if len(rolesRemoved) and "roleLogRemove" in data:
             await sendRoleChangeMessages(rolesRemoved, data["roleLogRemove"], after.name)
 
-    
     async def updateRoleChangeMessages(msg, key, roleID, channelID, message):
-        guid = msg.guild.id
-        data, _ = check_guild(guid)
         if not msg.author.guild_permissions.manage_roles:
             await msg.send("You do not have permission to do this")
             return
+
+        channelID, roleID = int(channelID), int(roleID)
+        guid = msg.guild.id
+        data, _ = check_guild(guid)
+
         if key not in data:
             data[key] = {}
         roleChangeData = data[key]
-        channelID, roleID = int(channelID), int(roleID)
+
         if channelID == 0:
             if roleID in roleChangeData:
                 roleChangeData.pop(roleID)
@@ -658,17 +664,14 @@ if BOT_EXTRA_ROLELOGS:
             check_save(guid)
             await msg.send("Added role to role detection")
 
-
     @bot.command()
     async def onRoleAdd(msg, roleID, channelID, message):
         await updateRoleChangeMessages(msg, "roleLogAdd", roleID, channelID, message)
-        
-        
+
     @bot.command()
     async def onRoleRemove(msg, roleID, channelID, message):
         await updateRoleChangeMessages(msg, "roleLogRemove", roleID, channelID, message)
 
-    
     @bot.command()
     async def roleLogList(msg):
         guid = msg.guild.id
