@@ -616,11 +616,11 @@ async def on_command_error(ctx, error):
 # Miscellaneous features:
 
 if BOT_EXTRA_ROLELOGS:
-    async def sendRoleChangeMessages(roles, data, name):
+    async def sendRoleChangeMessages(roles, data, name, userID):
         for role in roles:
             if role.id in data:
                 channelID, message = data[role.id]
-                formattedMessage = message.format(role = role, name = name)
+                formattedMessage = message.format(role = role, name = name, userID = userID)
                 channel = bot.get_channel(channelID)
                 await channel.send(formattedMessage)
 
@@ -631,9 +631,9 @@ if BOT_EXTRA_ROLELOGS:
         rold, rnew = set(before.roles), set(after.roles)
         rolesRemoved, rolesAdded = rold - rnew, rnew - rold
         if len(rolesAdded) and "roleLogAdd" in data:
-            await sendRoleChangeMessages(rolesAdded, data["roleLogAdd"], after.name)
+            await sendRoleChangeMessages(rolesAdded, data["roleLogAdd"], after.name, after.id)
         if len(rolesRemoved) and "roleLogRemove" in data:
-            await sendRoleChangeMessages(rolesRemoved, data["roleLogRemove"], after.name)
+            await sendRoleChangeMessages(rolesRemoved, data["roleLogRemove"], after.name, after.id)
 
     
     async def updateRoleChangeMessages(msg, key, roleID, channelID, message):
