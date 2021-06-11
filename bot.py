@@ -1,14 +1,54 @@
+import abc
 import pickle
 import time
 import discord
+import asyncio
+from discord import message
+from discord.abc import Snowflake
 from discord.ext import commands
 
 # =============================
 # Edit these values to change bot functionality:
 REPINGDELAY = 20
 SAVE_INSTANT = True
+CLEAN_UP_ON_LEAVE = False
 # Extra bot functionality besides the original goal:
 BOT_EXTRA_ROLELOGS = True
+# =============================
+# Data structure
+# guild data (tuple - data, roles)
+# > data (dict)
+#   > roleLogAdd (dict) - Role detection only
+#     > roleID (tuple - channelID, message, restrictions)
+#       > channelID (int)
+#       > message (formattable string)
+#       > restrictions (dict)
+#         > hasRole (set)
+#           > roleID
+#           > ...
+#         > notHasRole (set)
+#           > roleID
+#           > ...
+#     > roleID
+#       > ...
+#   > roleLogRemove (dict) - Role detection only
+#     > ... - See roleLogAdd
+#   > fastping (set) - global ping cooldown bypassing
+#     > roleID
+#     > ...
+#   > restrictping (set) - allows these roles to ping only
+#     > roleID
+#     > ...
+#   > pingdelay (int) - cooldown used for per role and global ping timeout
+# > roles (dict)
+#   > groupName (tuple - roleData, members)
+#     > roleData (dict)
+#       > restricted (bool)
+#       > noping (bool)
+#       > pingdelay (float)
+#     > members (set)
+#       > userID
+#       > ...
 # =============================
 
 intents = discord.Intents.default()
@@ -40,6 +80,23 @@ def check_guild(guid):
             filename = str(guid) + ".dat"
             with open(filename, "rb") as datafile:
                 database[guid] = pickle.load(datafile)
+            
+            # Data updater
+            data, roles = database[guid]
+            if "roleLogAdd" in data:
+                roleAddData = data["roleLogAdd"]
+                for key, value in roleAddData.items():
+                    if len(value) == 2:
+                        channelID, message = value
+                        roleAddData[key] = (channelID, message, {})
+            if "roleLogRemove" in data:
+                roleRemoveData = data["roleLogRemove"]
+                for key, value in roleRemoveData.items():
+                    if len(value) == 2:
+                        channelID, message = value
+                        roleRemoveData[key] = (channelID, message, {})
+
+
         except OSError:
             print(f"Creating new database for guild with ID {guid}")
             database[guid] = ({}, {})
@@ -195,12 +252,20 @@ async def ping(msg, argument):
     # Ping users
     message = f"Mentioning {argument}: "
     for member in members:
+        if msg.guild.get_member(member) == None:
+            continue
         mstring = f"<@{member}>"
         if len(message) + len(mstring) > 1980:
             await msg.send(message)
             message = ""
         message += mstring + ", "
+
     await msg.send(message)
+    # await asyncio.sleep(2)
+    # embed = discord.Embed(color=0xec0000, title=f"Mentioning {argument}", description=message)
+    # await msg.send(embed=embed)
+    # sendMessage = await msg.send("@everyone", allowed_mentions=discord.AllowedMentions(users=idList, everyone=False))
+    # await sendMessage.edit(content=f"Mentioned {argument}.")
 
 
 @bot.command()
@@ -609,6 +674,18 @@ async def help(msg, *args):
     await msg.send(message)
 
 
+# Remove members from their group when they leave the server
+if CLEAN_UP_ON_LEAVE:
+    @bot.event
+    async def on_member_remove(member):
+        guid = member.guild.id
+        data, roles = check_guild(guid)
+        for roledata, members in roles:
+            if member.id in members:
+                members.remove(member.id)
+        check_save(guid)
+
+
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
@@ -619,12 +696,50 @@ async def on_command_error(ctx, error):
 # --------------------------------
 # Miscellaneous features:
 
+
+# Role add / remove detection:
 if BOT_EXTRA_ROLELOGS:
-    async def sendRoleChangeMessages(roles, data, name, userID):
+    # Commands:
+    # onRoleAdd(roleID, channelID, message):
+    #   Add detection so that when the role with roleID gets added to someone, the bot
+    #   sends a message in channelID.
+    # onRoleRemove(roleID, channelID, message):
+    #   Add detection so that when the role with roleID gets removed from someone, the bot
+    #   sends a message in channelID.
+    # roleLogList():
+    #   Prints the dictionary used for all role detection functionality.
+    # onRoleAddCondition(restrictionType, roleID, condition):
+    #   restrictiontype is one of: "hasRole" "notHasRole" "clearRoleRestriction"
+    #   adds/removes a restriction related to the role adding detection of roleID
+    #   hasRole means the message will only be send if the member has every
+    #   role added there (by passing the other role ID through condition)
+    #   notHasRole means the message will only be send if the member doesn't have any
+    #   role added there (by passing the other role ID through condition)
+    #   clearRoleRestriction will remove all hasRole and notHasRole values of the
+    #   given condition role ID
+    # onRoleRemoveCondition(restrictionType, roleID, condition):
+    #   restrictiontype is one of: "hasRole" "notHasRole" "clearRoleRestriction"
+    #   adds/removes a restriction related to the role removal detection of roleID
+    #   hasRole means the message will only be send if the member has every
+    #   role added there (by passing the other role ID through condition)
+    #   notHasRole means the message will only be send if the member doesn't have any
+    #   role added there (by passing the other role ID through condition)
+    #   clearRoleRestriction will remove all hasRole and notHasRole values of the
+    #   given condition role ID
+
+    async def sendRoleChangeMessages(roles, roleLogData, member):
         for role in roles:
-            if role.id in data:
-                channelID, message = data[role.id]
-                formattedMessage = message.format(role = role, name = name, userID = userID)
+            if role.id in roleLogData:
+                channelID, message, restrictions = roleLogData[role.id]
+
+                for key, values in restrictions.items():
+                    memberRoleIDS = [role.id for role in member.roles]
+                    if key == "hasRole" and not all(value in memberRoleIDS for value in values):
+                        return
+                    elif key == "notHasRole" and any(value in memberRoleIDS for value in values):
+                        return
+
+                formattedMessage = message.format(role = role, name = member.name, userID = member.id)
                 channel = bot.get_channel(channelID)
                 await channel.send(formattedMessage)
 
@@ -635,11 +750,11 @@ if BOT_EXTRA_ROLELOGS:
         rold, rnew = set(before.roles), set(after.roles)
         rolesRemoved, rolesAdded = rold - rnew, rnew - rold
         if len(rolesAdded) and "roleLogAdd" in data:
-            await sendRoleChangeMessages(rolesAdded, data["roleLogAdd"], after.name, after.id)
+            await sendRoleChangeMessages(rolesAdded, data["roleLogAdd"], after)
         if len(rolesRemoved) and "roleLogRemove" in data:
-            await sendRoleChangeMessages(rolesRemoved, data["roleLogRemove"], after.name, after.id)
+            await sendRoleChangeMessages(rolesRemoved, data["roleLogRemove"], after)
 
-    async def updateRoleChangeMessages(msg, key, roleID, channelID, message):
+    async def updateRoleChangeMessages(msg, roleChangeType, roleID, channelID, message):
         if not msg.author.guild_permissions.manage_roles:
             await msg.send("You do not have permission to do this")
             return
@@ -648,9 +763,9 @@ if BOT_EXTRA_ROLELOGS:
         guid = msg.guild.id
         data, _ = check_guild(guid)
 
-        if key not in data:
-            data[key] = {}
-        roleChangeData = data[key]
+        if roleChangeType not in data:
+            data[roleChangeType] = {}
+        roleChangeData = data[roleChangeType]
 
         if channelID == 0:
             if roleID in roleChangeData:
@@ -659,9 +774,9 @@ if BOT_EXTRA_ROLELOGS:
             else:
                 await msg.send("Role was not in role detection")
             if len(roleChangeData) == 0:
-                data.pop(key)
+                data.pop(roleChangeType)
         else:
-            roleChangeData[roleID] = (channelID, message)
+            roleChangeData[roleID] = (channelID, message, {})
             await msg.send("Added role to role detection")
         check_save(guid)
 
@@ -684,6 +799,48 @@ if BOT_EXTRA_ROLELOGS:
         roleAdd = data["roleLogAdd"] if "roleLogAdd" in data else "None"
         await msg.send(f"Remove watchlist: {roleRemove}, add watchlist: {roleAdd}")
 
+    def addRoleChangeData(data, key, value):
+        if key not in data:
+            data[key] = set()
+        data[key].add(value)
+
+    def removeRoleChangeData(data, key, value):
+        if key not in data or value not in data[key]:
+            return
+        data[key].remove(value)
+        if len(data[key]) == 0:
+            data.pop(key)
+
+    async def changeRestrictions(msg, roleChangeType, roleID, restrictionType, condition):
+        if not msg.author.guild_permissions.manage_roles:
+            await msg.send("You do not have permission to do this")
+            return
+        roleID = int(roleID)
+        guid = msg.guild.id
+        data, _ = check_guild(guid)
+        roleChangeData = data[roleChangeType]
+        channelID, message, tokenData = roleChangeData[roleID]
+        if restrictionType == "hasRole":
+            condition = int(condition)
+            addRoleChangeData(tokenData, "hasRole", condition)
+            removeRoleChangeData(tokenData, "notHasRole", condition)
+        elif restrictionType == "notHasRole":
+            condition = int(condition)
+            addRoleChangeData(tokenData, "notHasRole", condition)
+            removeRoleChangeData(tokenData, "hasRole", condition)
+        elif restrictionType == "clearRoleRestriction":
+            condition = int(condition)
+            removeRoleChangeData(tokenData, "hasRole", condition)
+            removeRoleChangeData(tokenData, "notHasRole", condition)
+        saveDatabase(guid)
+
+    @bot.command()
+    async def onRoleAddCondition(msg, restrictionType, roleID, condition):
+        await changeRestrictions(msg, "roleLogAdd", roleID, restrictionType, condition)
+
+    @bot.command()
+    async def onRoleRemoveCondition(msg, restrictionType, roleID, condition):
+        await changeRestrictions(msg, "roleLogRemove", roleID, restrictionType, condition)
 
 # ----------------------------
 # Bot starting code:
