@@ -815,21 +815,27 @@ if BOT_EXTRA_ROLELOGS:
         if not msg.author.guild_permissions.manage_roles:
             await msg.send("You do not have permission to do this")
             return
+        if not roleID.isnumeric():
+            await msg.send("Main role ID invalid")
+            return
         roleID = int(roleID)
         guid = msg.guild.id
         data, _ = check_guild(guid)
         roleChangeData = data[roleChangeType]
+        if roleID not in roleChangeData:
+            await msg.send("There is no role logging attached to this role")
+            return
         channelID, message, tokenData = roleChangeData[roleID]
         if restrictionType == "hasRole":
-            if not (roleID.isnumeric() and condition.isnumeric()):
-                await msg.send(f"Invalid role ID")
+            if not condition.isnumeric():
+                await msg.send("Invalid role ID")
                 return
             condition = int(condition)
             addRoleChangeData(tokenData, "hasRole", condition)
             removeRoleChangeData(tokenData, "notHasRole", condition)
             await msg.send(f"Role change event for role with id {roleID} now has updated role requirements")
         elif restrictionType == "notHasRole":
-            if not (roleID.isnumeric() and condition.isnumeric()):
+            if not condition.isnumeric():
                 await msg.send(f"Invalid role ID")
                 return
             condition = int(condition)
@@ -837,7 +843,7 @@ if BOT_EXTRA_ROLELOGS:
             removeRoleChangeData(tokenData, "hasRole", condition)
             await msg.send(f"Role change event for role with id {roleID} now has updated role requirements")
         elif restrictionType == "clearRoleRestriction":
-            if not (roleID.isnumeric() and condition.isnumeric()):
+            if not condition.isnumeric():
                 await msg.send(f"Invalid role ID")
                 return
             condition = int(condition)
