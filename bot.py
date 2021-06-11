@@ -821,14 +821,25 @@ if BOT_EXTRA_ROLELOGS:
         roleChangeData = data[roleChangeType]
         channelID, message, tokenData = roleChangeData[roleID]
         if restrictionType == "hasRole":
+            if not (roleID.isnumeric() and condition.isnumeric()):
+                await msg.send(f"Invalid role ID")
+                return
             condition = int(condition)
             addRoleChangeData(tokenData, "hasRole", condition)
             removeRoleChangeData(tokenData, "notHasRole", condition)
+            await msg.send(f"Role change event for role with id {roleID} now has updated role requirements")
         elif restrictionType == "notHasRole":
+            if not (roleID.isnumeric() and condition.isnumeric()):
+                await msg.send(f"Invalid role ID")
+                return
             condition = int(condition)
             addRoleChangeData(tokenData, "notHasRole", condition)
             removeRoleChangeData(tokenData, "hasRole", condition)
+            await msg.send(f"Role change event for role with id {roleID} now has updated role requirements")
         elif restrictionType == "clearRoleRestriction":
+            if not (roleID.isnumeric() and condition.isnumeric()):
+                await msg.send(f"Invalid role ID")
+                return
             condition = int(condition)
             removeRoleChangeData(tokenData, "hasRole", condition)
             removeRoleChangeData(tokenData, "notHasRole", condition)
