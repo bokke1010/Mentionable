@@ -46,6 +46,7 @@ BOT_EXTRA_ROLELOGS = True
 #       > restricted (bool)
 #       > noping (bool)
 #       > pingdelay (float)
+#       > description (string)
 #     > members (set)
 #       > userID
 #       > ...
@@ -64,11 +65,10 @@ bot = commands.Bot(command_prefix="+", help_command=None, intents=intents)
 def get_name(guild, id):
     user = guild.get_member(id)
     if user is not None:
-        nick = user.nick
-        if nick is not None:
-            return f"{id}: {user.nick} ({user.name})"
+        if user.nick is not None:
+            return f"{user.nick} ({user.name})"
         else:
-            return f"{id}: {user.name}"
+            return f"{user.name}"
     else:
         return f"unfound user with id {id}"
 
@@ -270,30 +270,31 @@ async def ping(msg, argument):
 
 @bot.command()
 async def get(msg, *args):
-    data, roles = check_guild(msg.guild.id)
+    guid = msg.guild.id
+    data, roles = check_guild(guid)
     if len(args) > 0 and msg.author.guild_permissions.manage_roles:
         if args[0].isnumeric():
             UID = int(args[0])
-            results = [key for key, (_, members) in roles.items()
-                       if UID in members]
+            results = sorted(key for key, (_, members) in roles.items()
+                       if UID in members)
             if len(results) > 0:
-                message = get_name(UID) + " is in the following groups: "
+                message = get_name(msg.guild, UID) + " is in the following groups: "
                 for role in results:
                     if len(message) + len(role) > 1980:
-                        await msg.send(message + "...")
+                        await msg.send(message)
                         message = ""
-                    message += role + ",   "
+                    message += "\n" + role
                 await msg.send(message)
             else:
                 await msg.send("This person is not in any groups.")
         elif args[0].lower() in roles:
             roledata, members = roles[args[0].lower()]
-            message = f"This group contains the following {len(members)} users:\n"
+            message = f"This group contains the following {len(members)} users:"
             for name in (get_name(msg.guild, a) for a in members):
                 if len(message) + len(name) > 1980:
-                    await msg.send(message + "...")
+                    await msg.send(message)
                     message = ""
-                message += name + "\n"
+                message += "\n" + name
             await msg.send(message)
         else:
             await msg.send("Invalid user ID or role name")
@@ -319,8 +320,14 @@ async def create(msg, argument, *args):
         return
 
     roledata = {}
+    asDesc = False
     for arg in args:
-        if arg == "restrict_join":
+        if asDesc:
+            roledata["description"] = arg
+            asDesc = False
+        elif arg == "description":
+            asDesc = True
+        elif arg == "restrict_join":
             roledata["restricted"] = True
         elif arg == "restrict_ping":
             roledata["noping"] = True
@@ -581,10 +588,22 @@ async def resetCooldown(msg, argument):
 
 
 @bot.command()
-async def list(msg):
+async def list(msg, page = 1):
+    LIST_PAGE_LENGTH = 20
     data, roles = check_guild(msg.guild.id)
     if len(roles) > 0:
-        await msg.send(", ".join(roles.keys()))
+        roleList = sorted(roles.keys())
+        lbd, ubd = (page - 1) * LIST_PAGE_LENGTH, page * LIST_PAGE_LENGTH
+        shownRoles = roleList[lbd:ubd]
+        message = f"Showing fake roles {lbd + 1} to {min(len(roleList), ubd + 1)} out of {len(roleList)}:"
+        for role in shownRoles:
+            roleData, _ = roles[role]
+            print(roleData)
+            if "description" in roleData:
+                message  += "\n" + role + " - " + roleData["description"]
+            else:
+                message  += "\n" + role
+        await msg.send(message)
     else:
         await msg.send("No fake roles exist for this server.")
 
