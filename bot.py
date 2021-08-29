@@ -528,6 +528,18 @@ async def configure(msg, argument, *args):
                     message = f"Set delay for role {role} to {newcooldown}"
                 else:
                     message = "invalid role cooldown command"
+            elif action == "description":
+                if len(args) == 2:
+                    message = "No description was given"
+                elif args[2] == "":
+                    if "description" in roledata:
+                        roledata.pop("description")
+                    message = f"Cleared the description for role {role}"
+                else:
+                    roledata["description"] = args[2]
+                    message = f"Set description for role {role} to\n{args[2]}"
+
+
 
     # -------------------------------
     # cooldown configuration
