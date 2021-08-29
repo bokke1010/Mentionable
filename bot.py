@@ -607,15 +607,14 @@ async def list(msg, page = 1):
         roleList = sorted(roles.keys())
         lbd, ubd = (page - 1) * LIST_PAGE_LENGTH, page * LIST_PAGE_LENGTH
         shownRoles = roleList[lbd:ubd]
-        message = f"Showing fake roles {lbd + 1} to {min(len(roleList), ubd + 1)} out of {len(roleList)}:"
+        embedVar = discord.Embed(title=f"Showing fake roles {lbd + 1} to {min(len(roleList), ubd + 1)} out of {len(roleList)}", color=0x00ffff)
         for role in shownRoles:
             roleData, _ = roles[role]
-            print(roleData)
             if "description" in roleData:
-                message  += "\n" + role + " - " + roleData["description"]
+                embedVar.add_field(name=role, value=roleData["description"], inline=False)
             else:
-                message  += "\n" + role
-        await msg.send(message)
+                embedVar.add_field(name=role, value="-", inline=False)
+        await msg.send(embed=embedVar)
     else:
         await msg.send("No fake roles exist for this server.")
 
