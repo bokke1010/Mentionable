@@ -461,10 +461,10 @@ async def configure(msg, argument, *args):
 
         elif args[0] == "getexcluded":
             if "restrictping" in data:
-                message += "Curent list of roles allowed to ping:\n"
+                message += "Curent list of roles allowed to ping:"
                 for role in data["restrictping"]:
                     rolename = msg.guild.get_role(role)
-                    message += f"{role}: {rolename}\n"
+                    message += f"\n{role}: {rolename}"
             else:
                 message += "Ping restrictions are disabled"
 
@@ -646,67 +646,74 @@ async def save(msg):
 
 @bot.command()
 async def help(msg, *args):
+    embed = discord.Embed(color=0x00ffff)
     message = ""
     if len(args) == 0:
-        message += "**Basic commands:**"
-        message += "\njoin x \n - Join group x"
-        message += "\nleave x\n - Leave group x"
-        message += "\nping x\n - Mention everyone in the group x"
-        message += "\nget\n - See your current groups"
-        message += "\nlist\n - Show all existing groups"
+        embed.title = "Basic commands"
+        embed.add_field(name="join [list]", value="Allows you to join a ping list.", inline=False)
+        embed.add_field(name="leave [list]", value="Allows you to leave a ping list you joined previously.", inline=False)
+        embed.add_field(name="ping [list]", value="pings all members of a ping list. May require a role.", inline=False)
+        embed.add_field(name="get", value="See the ping lists that you are currently a member of.", inline=False)
+        embed.add_field(name="list [page number]", value="Show existing ping lists.", inline=False)
         if msg.author.guild_permissions.manage_roles:
-            message += "\nhelp mod\n - show mod commands"
+            embed.add_field(name="help mod", value="Show moderation commands.", inline=False)
 
     elif args[0] == "mod":
-        message += "\n**Requires 'Manage roles':**"
-        message += "\ncreate x\n - Create a new group named x that anyone can join."
-        message += "\ndelete x\n - Remove a existing group by name"
-        message += "\nkick x ID\n - Remove a member from group x by userID"
-        message += "\njoin x ID\n - Add a user to a group by userID"
-        message += "\nget ID\n - Get all roles a user is in by userID"
-        message += "\nget role\n - Get all users in a role"
-        message += "\nrename oldname newname\n - rename a role"
-        message += "\nhelp globalcooldown\n - see cooldown configuration commands"
-        message += "\nhelp pingrestrictions\n - see ping restriction configuration commands"
-        message += "\nhelp pingcooldown\n - see role ping specific cooldown commands"
-        message += "\nhelp roleconfigure\n - see role configuration help"
+        embed.title = "Moderation commands"
+        embed.add_field(name="create [list]", value="Create a list with the given name. Use \"help roleconfigure\" to see additional options.", inline=False)
+        embed.add_field(name="delete [list]", value="Delete a existing ping list.", inline=False)
+        embed.add_field(name="kick [list] [user id]", value="Remove a member from a ping list.", inline=False)
+        embed.add_field(name="join [list] [user id]", value="Add a member from a ping list.", inline=False)
+        embed.add_field(name="get [user id]", value="Show all ping lists a person has joined.", inline=False)
+        embed.add_field(name="get [list]", value="Show all members of a ping list.", inline=False)
+        embed.add_field(name="rename [list] [new name]", value="Rename a ping list.", inline=False)
+        embed.add_field(name="help globalcooldown", value="See the commands related to the server-wide ping cooldown.", inline=False)
+        embed.add_field(name="help pingrestriction", value="See the commands related to the roles required to use +ping.", inline=False)
+        embed.add_field(name="help pingcooldown", value="See the commands related to list-specific cooldowns.", inline=False)
+        embed.add_field(name="help roleconfigure", value="See the commands related to configuring single ping lists.", inline=False)
 
     elif args[0] == "globalcooldown" and msg.author.guild_permissions.manage_roles:
-        message += "**Requires 'Manage roles':**\n"
-        message += "configure globalcooldown ... | configure gcd ...\n - configure the global cooldown\n"
-        message += "enable\n - enables the global cooldown\n"
-        message += "disable\n - disable the global cooldown, erasing all cooldown data\n"
-        message += "excluderoles IDS\n - disables the global cooldown for the given roles (by id), and enables it globally\n"
-        message += "includeroles IDS\n - reenables the global cooldown for the given roles (by id), and enables it globally\n"
-        message += "getexcluded\n - see what role ID's currently ignore the global cooldown\n"
+        embed.title = "Global message cooldown commands"
+        embed.description = "Configure a guild-wide cooldown for pings. Certain roles can ignore this cooldown."
+        embed.add_field(name="configure globalcooldown ... | configure gcd ...", value="Base command, fill in the dots with one of the options below", inline=False)
+        embed.add_field(name="enable", value="Enable the global cooldown. This is a single cooldown that applies to all lists simultaniously.", inline=False)
+        embed.add_field(name="disable", value="Disables the global cooldown.", inline=False)
+        embed.add_field(name="excluderoles [list of role ids]", value="Allow these roles to ignore the cooldown.", inline=False)
+        embed.add_field(name="includeroles [list of role ids]", value="No longer allow these roles to ignore the cooldown.", inline=False)
+        embed.add_field(name="getexcluded", value="Lists the role ID's of the roles that may currently ignore the cooldown.", inline=False)
 
     elif args[0] == "pingrestrictions" and msg.author.guild_permissions.manage_roles:
-        message += "**Requires 'Manage roles':**\n"
-        message += "configure pingrestrictions ... | configure pr ...\n - configure the restrictions\n"
-        message += "enable\n - enables the restrictions\n"
-        message += "disable\n - disable the restrictions, erasing all related data\n"
-        message += "excluderoles IDS\n - disables the restrictions for the given roles (by id), and enables it globally\n"
-        message += "includeroles IDS\n - reenables the restrictions for the given roles (by id), and enables it globally\n"
-        message += "getexcluded\n - see what role ID's currently ignore the restrictions\n"
+        embed.title = "Restricted list pinging configuration"
+        embed.description = "Configure the roles required to use the +ping command."
+        embed.add_field(name="configure pingrestrictions ... | configure pr ...", value="Base command, fill in the dots with one of the options below", inline=False)
+        embed.add_field(name="rename [list] [new name]", value="Rename a ping list.", inline=False)
+        embed.add_field(name="enable", value="Enable the ping restriction, only allowing certain roles to use the +ping command.", inline=False)
+        embed.add_field(name="disable", value="Disable the restriction, allowing everyone to use the ping command.", inline=False)
+        embed.add_field(name="excluderoles [list of role ids]", value="Allow these roles to ignore the pinging restriction.", inline=False)
+        embed.add_field(name="includeroles [list of role IDs]", value="No longer allow these roles to ignore the restriction.", inline=False)
+        embed.add_field(name="getexcluded", value="Show a list of role ID's that ignore the restriction.", inline=False)
 
     elif args[0] == "pingcooldown" and msg.author.guild_permissions.manage_roles:
-        message += "**Requires 'Manage roles':**\n"
-        message += "configure defaultcooldown [time in seconds]\n - Configure the default ping cooldown for all roles\n"
-        message += "configure role [role] cooldown [time in seconds]\n - set the ping cooldown for a single role\n"
-        message += "configure role [role] cooldown reset\n - Reset the ping cooldown for a role to the server default\n"
-        message += "resetCooldown [role]\n - Reset the ping cooldown for a role, allowing it to be mentioned again\n"
+        embed.title = "Commands to configure the list-specific cooldowns."
+        embed.add_field(name="configure defaultcooldown [time in seconds]", value="Configure the default ping cooldown for this server.", inline=False)
+        embed.add_field(name="configure role [role] cooldown [time in seconds]", value="Add a list-specific cooldown for this list.", inline=False)
+        embed.add_field(name="configure role [role] cooldown reset", value="Remove the list-specific cooldown for this list.", inline=False)
+        embed.add_field(name="resetCooldown [role]", value="Reset the ping cooldown for a role, allowing it to be mentioned again.", inline=False)
 
     elif args[0] == "roleconfigure" and msg.author.guild_permissions.manage_roles:
-        message += "**Requires 'Manage roles':**\n"
-        message += "Role properties can be added by putting them after '+create [action]' or by using '+configure role [rolename] [action]\n"
-        message += "actions:\n"
-        message += "restrict_join\n - Requires manage messages to join or leave\n"
-        message += "allow_join\n - (default) No longer requires manage messages to join or leave\n"
-        message += "restrict_ping\n - Requires manage messages to ping\n"
-        message += "allow_ping\n - (default) No longer requires manage messages to ping\n"
-        message += "See +help pingcooldown to configure the role specific ping cooldowns\n"
+        embed.title = "Commands to configure a specific role"
+        embed.description = "Role properties can be added by putting them after '+create [property]' or by using '+configure role [rolename] [property]'\nValid properties follow below."
+        embed.add_field(name="restrict_join", value="List membership can only be changed by people with manage messages.", inline=False)
+        embed.add_field(name="allow_join", value="(default) Someone may change their own membership status for this list.", inline=False)
+        embed.add_field(name="restrict_ping", value="This list may only be mentioned by someone with manage messages.", inline=False)
+        embed.add_field(name="allow_ping", value="(default) This list may be mentioned by anyone who complies with the other restrictions.", inline=False)
+        embed.add_field(name="description [description text]", value="Add a description to this list that shows up when using '+list'.", inline=False)
+        embed.set_footer(text="See '+help pingcooldown' to configure the role specific ping cooldowns")
+    else:
+        await msg.send("invalid argument")
+        return
 
-    await msg.send(message)
+    await msg.send(embed=embed)
 
 
 # Remove members from their group when they leave the server
