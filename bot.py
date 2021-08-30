@@ -10,6 +10,7 @@ from discord.ext import commands
 # =============================
 # Edit these values to change bot functionality:
 REPINGDELAY = 20
+LIST_PAGE_LENGTH = 20
 SAVE_INSTANT = True
 CLEAN_UP_ON_LEAVE = False
 # Extra bot functionality besides the original goal:
@@ -601,13 +602,17 @@ async def resetCooldown(msg, argument):
 
 @bot.command()
 async def list(msg, page = 1):
-    LIST_PAGE_LENGTH = 20
     data, roles = check_guild(msg.guild.id)
     if len(roles) > 0:
         roleList = sorted(roles.keys())
+        roleCount = len(roleList)
+        pages = -(-roleCount // LIST_PAGE_LENGTH)
+        if not (0 < page <= pages):
+            await msg.send(f"This page does not exist, try a number between 1 and {pages}")
+            return
         lbd, ubd = (page - 1) * LIST_PAGE_LENGTH, page * LIST_PAGE_LENGTH
         shownRoles = roleList[lbd:ubd]
-        embedVar = discord.Embed(title=f"Showing fake roles {lbd + 1} to {min(len(roleList), ubd + 1)} out of {len(roleList)}", color=0x00ffff)
+        embedVar = discord.Embed(title=f"Page {page}/{pages}, items {lbd+1}-{min(ubd, roleCount)} out of {len(roleList)}", color=0x00ffff)
         for role in shownRoles:
             roleData, _ = roles[role]
             if "description" in roleData:
