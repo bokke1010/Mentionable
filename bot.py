@@ -15,6 +15,8 @@ SAVE_INSTANT = True
 CLEAN_UP_ON_LEAVE = False
 ROLE_PROPOSAL_TIMEOUT = 24 * 3600
 ROLE_PROPOSAL_THRESHOLD = 5
+REACTION_APPROVE = "\U00002B06"
+REACTION_LEFT, REACTION_RIGHT = "\U00002B05", "\U000027A1"
 # Extra bot functionality besides the original goal:
 BOT_EXTRA_ROLELOGS = True
 # =============================
@@ -43,9 +45,10 @@ BOT_EXTRA_ROLELOGS = True
 #     > discord role ID
 #     > ...
 #   > channelRestrictions (dict)
-#     > membership (set) - blacklist, are membership commands allowed in this channel (join, leave)
-#     > mentioning (set) - blacklist, ping
-#     > information (set) - blacklist, get, list
+#     > membership (set) - blacklist; join, leave
+#     > mentioning (set) - blacklist; ping
+#     > information (set) - blacklist; get, list
+#     > proposals (set) - blacklist; propose, listProposals
 #   > pingdelay (int) - cooldown used for per list and global ping timeout
 #   > proposals (dict)
 #     > messageID (tuple)
@@ -137,6 +140,12 @@ def channel_restricted(data, channelID, commandType):
     channelIDS: set = restrictions[commandType]
     return channelID in channelIDS
 
+def man_roles(ctx):
+    return ctx.author.guild_permissions.manage_roles
+
+def man_message(ctx):
+    return ctx.author.guild_permissions.manage_messages
+
 def joinMember(guild, author, argument, memberID):
     data, roles = check_guild(guild.id)
     if argument not in roles:
@@ -200,7 +209,7 @@ async def leave(msg, argument):
     
     if argument in roles:
         roledata, members = roles[argument]
-        if "restricted" in roledata and not msg.author.guild_permissions.manage_roles:
+        if "restricted" in roledata and not man_roles(msg):
             await msg.send("You cannot edit your membership of this role")
             return
 
@@ -219,7 +228,7 @@ async def kick(msg, argument, userID: int):
     guid = msg.guild.id
     argument = argument.lower()
     data, roles = check_guild(guid)
-    if not msg.author.guild_permissions.manage_roles:
+    if not man_roles(msg):
         await msg.send("You do not have permission to do this")
         return
     elif argument not in roles:
@@ -263,7 +272,7 @@ async def ping(msg, argument):
         recentserverpings["global"] = 0
 
 
-    if not msg.author.guild_permissions.manage_messages:
+    if not man_message(msg):
         # Get relevant cooldown
         repingdelay = REPINGDELAY
         if "pingdelay" in roledata:
@@ -319,7 +328,7 @@ async def ping(msg, argument):
 async def get(msg, *args):
     guid = msg.guild.id
     data, roles = check_guild(guid)
-    bypassRestrictions = msg.author.guild_permissions.manage_roles
+    bypassRestrictions = man_roles(msg)
 
     if len(args) > 0 and bypassRestrictions:
         if args[0].isnumeric():
@@ -362,7 +371,7 @@ async def get(msg, *args):
 async def create(msg, argument, *args):
     argument = argument.lower()
     data, roles = check_guild(msg.guild.id)
-    if not msg.author.guild_permissions.manage_roles:
+    if not man_roles(msg):
         await msg.send("You do not have permission to do this")
         return
     if argument in roles:
@@ -391,6 +400,10 @@ async def create(msg, argument, *args):
 async def propose(msg, argument):
     argument = argument.lower()
     data, roles = check_guild(msg.guild.id)
+    if channel_restricted(data, msg.channel.id, "proposals") and not man_roles(msg):
+        # Check if this type of command is allowed in this channel
+        await msg.send("You may not use this command in this channel.")
+        return
     if argument in roles:
         await msg.send("This list already exists, ignoring command.")
         return
@@ -405,13 +418,13 @@ async def propose(msg, argument):
     proposals = data["proposals"]
     votingMessage = await msg.send(f"you may now vote on the proposed role {argument}")
     proposals[votingMessage.id] = (argument, msg.channel.id, time.time())
-    await votingMessage.add_reaction("\U00002B06")
+    await votingMessage.add_reaction(REACTION_APPROVE)
     check_save(msg.guild.id)
 
 @bot.command()
 async def cancelProposal(msg, messageID: int):
     data, roles = check_guild(msg.guild.id)
-    if not msg.author.guild_permissions.manage_roles:
+    if not man_roles(msg):
         await msg.send("You do not have permission to do this")
     elif "proposals" not in data:
         await msg.send("List proposals are not enabled")
@@ -424,6 +437,10 @@ async def cancelProposal(msg, messageID: int):
 @bot.command()
 async def listProposals(msg):
     data, roles = check_guild(msg.guild.id)
+    if channel_restricted(data, msg.channel.id, "proposals") and not man_roles(msg):
+        # Check if this type of command is allowed in this channel
+        await msg.send("You may not use this command in this channel.")
+        return
     if "proposals" not in data:
         await msg.send("List proposals are not enabled")
         return
@@ -435,7 +452,7 @@ async def listProposals(msg):
     else:
         await msg.send("there are no active proposals.")
 
-@tasks.loop(minutes=10)
+@tasks.loop(minutes=30)
 async def updateProposals():
     global database
     currentTime = time.time()
@@ -471,7 +488,7 @@ async def proposeApproved(proposal):
 async def rename(msg, oldname, newname):
     oldname, newname = oldname.lower(), newname.lower()
     data, roles = check_guild(msg.guild.id)
-    if not msg.author.guild_permissions.manage_roles:
+    if not man_roles(msg):
         await msg.send("You do not have permission to do this")
         return
     if newname in roles:
@@ -492,7 +509,7 @@ async def configure(msg, argument, *args):
     guid = msg.guild.id
     argument = argument.lower()
     data, roles = check_guild(guid)
-    if not msg.author.guild_permissions.manage_roles:
+    if not man_roles(msg):
         await msg.send("You do not have permission to do this")
         return
     message = ""
@@ -679,7 +696,7 @@ async def configure(msg, argument, *args):
             if "channelRestrictions" not in data:
                 data["channelRestrictions"] = {}
             restrictions: dict = data["channelRestrictions"]
-            if type == "membership" or type == "mentioning" or type == "information":
+            if type in ["membership", "mentioning", "information", "proposals"]:
                 if type not in restrictions:
                     restrictions[type] = set()
                 channelSet: set = restrictions[type]
@@ -745,7 +762,7 @@ async def configure(msg, argument, *args):
 async def delete(msg, argument):
     argument = argument.lower()
     data, roles = check_guild(msg.guild.id)
-    if not msg.author.guild_permissions.manage_roles:
+    if not man_roles(msg):
         await msg.send("You do not have permission to do this")
         return
     elif argument not in roles:
@@ -762,7 +779,7 @@ async def resetCooldown(msg, argument):
     argument = argument.lower()
     guid = msg.guild.id
     data, roles = check_guild(guid)
-    if not msg.author.guild_permissions.manage_roles:
+    if not man_roles(msg):
         await msg.send("You do not have permission to do this")
         return
     elif argument not in roles:
@@ -773,7 +790,6 @@ async def resetCooldown(msg, argument):
     recentserverpings = recentpings[guid]
     recentserverpings[argument] = 0
     await msg.send("Reset role ping cooldown")
-
 
 @bot.command()
 async def list(msg, page = 1):
@@ -900,7 +916,7 @@ async def help(msg, *args):
         
     elif args[0] == "channelblacklist" and msg.author.guild_permissions.manage_roles:
         embed.title = "Commands to blacklist certain command catagories from channels."
-        embed.description = "The catagories are 'membership' for join and leave, 'mentioning' for ping and 'information' for get and list."
+        embed.description = "The catagories are 'membership' for join and leave, 'mentioning' for ping, 'proposals' for list proposals and 'information' for get and list."
         embed.add_field(name="configure togglechannelblacklist [catagory] [channel ID]", value="Toggle whether or not a certain catagory is blacklisted from a channel.", inline=False)
         
     elif args[0] == "listproposals" and msg.author.guild_permissions.manage_roles:
@@ -940,21 +956,14 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_reaction_add(reaction, user):
-    print("t1")
     messageID, guid = reaction.message.id, reaction.message.guild.id
     data, roles = check_guild(guid)
-    if "proposals" in data:
-        print("t3")
+    if "proposals" in data and str(reaction.emoji) == REACTION_APPROVE:
         proposals = data["proposals"]
         if messageID in proposals:
-            print("t4")
-            proposal = proposals[messageID]
-            name, channelID, timestamp = proposal
             proposalThreshold = data["proposalThreshold"] if "proposalThreshold" in data else ROLE_PROPOSAL_THRESHOLD
             if reaction.count > proposalThreshold:
-                print("t5")
-                proposals.pop(messageID)
-                await proposeApproved(proposal)
+                await proposeApproved(proposals.pop(messageID))
         print(proposals)
 
 
