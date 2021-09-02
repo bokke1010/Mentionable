@@ -120,12 +120,19 @@ def check_guild(guid):
                         channelID, message = value
                         roleRemoveData[key] = (channelID, message, {})
 
-
         except OSError:
             print(f"Creating new database for guild with ID {guid}")
             database[guid] = ({}, {})
     return database[guid]
 
+# Scrapped for now, this wasn't playing nicely with lazy server loading
+# (it needs all the data on startup, which is before we load it) 
+# async def setup_cache(guid):
+#     data, roles = check_guild(guid)
+#     if "proposals" in data:
+#         for messageID, (name, channelID, timestamp) in data["proposals"].items():
+#             channel: discord.abc.Messageable = await bot.fetch_channel(channelID)
+#             await channel.fetch_message(messageID)
 
 def check_save(guid):
     if SAVE_INSTANT:
@@ -432,6 +439,7 @@ async def cancelProposal(msg, messageID: int):
         await msg.send("This is not a proposal message ID")
     else:
         data["proposals"].pop(messageID)
+        check_save(msg.guild.id)
         await msg.send("The proposal has been cancelled")
 
 @bot.command()
@@ -452,25 +460,6 @@ async def listProposals(msg):
     else:
         await msg.send("there are no active proposals.")
 
-@tasks.loop(minutes=30)
-async def updateProposals():
-    global database
-    currentTime = time.time()
-    for guid, (data, _) in database.items():
-        popable = []
-        for messageID, proposal in data["proposals"].items():
-            name, channelID, timestamp = proposal
-            timeout = data["proposalTimeout"] if "proposalTimeout" in data else ROLE_PROPOSAL_TIMEOUT
-            if timestamp + timeout < currentTime:
-                popable.append(messageID)
-                channel = bot.get_channel(channelID)
-                await channel.send(f"Proposal for the {name} list timed out")
-        for messageID in popable:
-            data["proposals"].pop(messageID)
-        if len(popable) > 0:
-            check_save(guid)
-
-
 async def proposeApproved(proposal):
     name, channelID, timestamp = proposal
     channel = bot.get_channel(channelID)
@@ -483,6 +472,35 @@ async def proposeApproved(proposal):
     check_save(guid)
     await channel.send(f"The '{name}' list was succesfully created!")
 
+
+@tasks.loop(minutes=30)
+async def updateProposals():
+    global database
+    currentTime = time.time()
+    for guid, (data, _) in database.items():
+        popable = []
+        for messageID, proposal in data["proposals"].items():
+            name, channelID, timestamp = proposal
+            channel = bot.get_channel(channelID)
+            message = await channel.fetch_message(messageID)
+            proposalThreshold = data["proposalThreshold"] if "proposalThreshold" in data else ROLE_PROPOSAL_THRESHOLD
+            approved = False
+            for reaction in message.reactions:
+                if str(reaction) == REACTION_APPROVE and reaction.count > proposalThreshold:
+                    await proposeApproved(proposal)
+                    await channel.send(f"Proposal for the {name} list is approved")
+                    popable.append(messageID)
+                    approved = True
+                    break
+                
+            timeout = data["proposalTimeout"] if "proposalTimeout" in data else ROLE_PROPOSAL_TIMEOUT
+            if timestamp + timeout < currentTime and not approved:
+                popable.append(messageID)
+                await channel.send(f"Proposal for the {name} list timed out")
+        for messageID in popable:
+            data["proposals"].pop(messageID)
+        if len(popable) > 0:
+            check_save(guid)
 
 @bot.command()
 async def rename(msg, oldname, newname):
@@ -980,7 +998,9 @@ async def on_reaction_add(reaction, user):
 #         print(proposals)
 #     check_save(reaction.message.guild.id)
 
-
+# @bot.event
+# async def on_ready():
+#     await setup_cache()
 
 # --------------------------------
 # Miscellaneous features:
