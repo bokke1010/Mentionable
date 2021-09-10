@@ -478,6 +478,7 @@ async def updateProposals():
         popable = []
         if "proposals" not in data:
             continue
+        print(f"Testing active proposals for server {guid}")
         for messageID, proposal in data["proposals"].items():
             name, channelID, timestamp = proposal
             channel = bot.get_channel(channelID)
