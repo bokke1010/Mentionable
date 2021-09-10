@@ -241,9 +241,6 @@ async def kick(msg, argument, userID: int):
     elif argument not in roles:
         await msg.send("This role not exist.")
         return
-    elif not userID.isnumeric():
-        await msg.send("Enter a numerical user ID")
-        return
 
     userString = get_name(msg.guild, userID)
     roledata, members = roles[argument]
@@ -473,12 +470,14 @@ async def proposeApproved(proposal):
     await channel.send(f"The '{name}' list was succesfully created!")
 
 
-@tasks.loop(seconds=90)
+@tasks.loop(seconds=240)
 async def updateProposals():
     global database
     currentTime = time.time()
     for guid, (data, _) in database.items():
         popable = []
+        if "proposals" not in data:
+            continue
         for messageID, proposal in data["proposals"].items():
             name, channelID, timestamp = proposal
             channel = bot.get_channel(channelID)
