@@ -473,7 +473,7 @@ async def proposeApproved(proposal):
     await channel.send(f"The '{name}' list was succesfully created!")
 
 
-@tasks.loop(minutes=30)
+@tasks.loop(seconds=90)
 async def updateProposals():
     global database
     currentTime = time.time()
@@ -533,11 +533,17 @@ async def configure(msg, argument, *args):
     message = ""
 
     if argument == "printdata":
-        print(data)
-        message = "See console"
+        if len(args) == 0:
+            print(data)
+            message = "See console"
+        elif args[0] == "CONFIRM":
+            message = repr(data)
     elif argument == "printroles":
-        print(roles)
-        message = "See console"
+        if len(args) == 0:
+            print(roles)
+            message = "See console"
+        elif args[0] == "CONFIRM":
+            message = repr(roles)
 
     # Cooldown related configuration:
     # -------------------------------
