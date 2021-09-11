@@ -435,9 +435,9 @@ async def cancelProposal(msg, messageID: int):
     elif messageID not in data["proposals"]:
         await msg.send("This is not a proposal message ID")
     else:
-        data["proposals"].pop(messageID)
+        name, channelID, timestamp = data["proposals"].pop(messageID)
         check_save(msg.guild.id)
-        await msg.send("The proposal has been cancelled")
+        await msg.send(f"The proposal for {name} been cancelled")
 
 @bot.command()
 async def listProposals(msg):
