@@ -44,6 +44,9 @@ BOT_EXTRA_ROLELOGS = True
 #   > restrictping (set) - allows only these roles to ping
 #     > discord role ID
 #     > ...
+#   > restrictproposal (set) - allows only these roles to propose lists
+#     > discord role ID
+#     > ...
 #   > channelRestrictions (dict)
 #     > membership (set) - blacklist; join, leave
 #     > mentioning (set) - blacklist; ping
@@ -55,6 +58,8 @@ BOT_EXTRA_ROLELOGS = True
 #       > name (string)
 #       > channelID (channel ID in which the proposal is happening)
 #       > timestamp (int)
+#       > transferData (dict)
+#         > See roles.groupName.roleData
 #   > proposalTimeout
 #   > proposalThreshold
 # > roles (dict)
@@ -119,6 +124,15 @@ def check_guild(guid):
                     if len(value) == 2:
                         channelID, message = value
                         roleRemoveData[key] = (channelID, message, {})
+            if "proposals" in data:
+                proposals = data["proposals"]
+                for key, proposal in proposals.items():
+                    if len(proposal) == 3:
+                        name, channelID, timestamp = proposal
+                        proposals[key] = (name, channelID, timestamp, {})
+                
+
+                        
 
         except OSError:
             print(f"Creating new database for guild with ID {guid}")
@@ -414,17 +428,17 @@ async def propose(msg, argument):
     if argument in roles:
         await msg.send("This list already exists, ignoring command.")
         return
-    if False and "restrictping" in data:
+    if "restrictproposal" in data:
         # Check if user is allowed to ping a role
         authorRoleIDS = [role.id for role in msg.author.roles]
-        if (len(data["restrictping"].intersection(authorRoleIDS)) == 0):
+        if (len(data["restrictproposal"].intersection(authorRoleIDS)) == 0):
             await msg.send("You do not have permissions to propose roles")
             return
     if "proposals" not in data:
         await msg.send("Role proposals are disabled")
     proposals = data["proposals"]
     votingMessage = await msg.send(f"you may now vote on the proposed role {argument}")
-    proposals[votingMessage.id] = (argument, msg.channel.id, time.time())
+    proposals[votingMessage.id] = (argument, msg.channel.id, time.time(), {})
     await votingMessage.add_reaction(REACTION_APPROVE)
     check_save(msg.guild.id)
 
@@ -461,14 +475,14 @@ async def listProposals(msg):
         await msg.send("there are no active proposals.")
 
 async def proposeApproved(proposal):
-    name, channelID, timestamp = proposal
+    name, channelID, timestamp, listData = proposal
     channel = bot.get_channel(channelID)
     guid = channel.guild.id
     data, roles = check_guild(guid)
     if name in roles:
         await channel.send(f"Proposal approved, but {name} already exists.")
         return
-    roles[name] = ({}, set())
+    roles[name] = (listData, set())
     check_save(guid)
     await channel.send(f"The '{name}' list was succesfully created!")
 
@@ -480,7 +494,7 @@ async def updateProposals():
     for guid, (data, _) in database.items():
         popable = []
         for messageID, proposal in data["proposals"].items():
-            name, channelID, timestamp = proposal
+            name, channelID, timestamp, listData = proposal
             channel = bot.get_channel(channelID)
             message = await channel.fetch_message(messageID)
             proposalThreshold = data["proposalThreshold"] if "proposalThreshold" in data else ROLE_PROPOSAL_THRESHOLD
@@ -660,6 +674,67 @@ async def configure(msg, argument, *args):
             message = "subcommand not recognized"
 
     # -------------------------------
+    # ping restriction configuration:
+    elif argument == "proposalrestrictions" and len(args) > 0:
+        if args[0] == "enable":
+            if "restrictproposal" not in data:
+                data["restrictproposal"] = set()
+                message += "Enabling proposal restrictions"
+            else:
+                message += "Proposal restrictions were already enabled"
+
+        elif args[0] == "excluderoles":
+            if "restrictproposal" not in data:
+                data["restrictproposal"] = set()
+                message += "Proposal restrictions were not yet enabled, enabling them now\n"
+            if len(args) == 1:
+                message += "No roles were allowed access\n"
+            else:
+                for role in args[1:]:
+                    if not role.isnumeric():
+                        message += role + " is not a role ID\n"
+                        continue
+                    data["restrictproposal"].add(int(role))
+                    message += f"role with id {role}, name {msg.guild.get_role(int(role))} succesfully added\n"
+
+        elif args[0] == "getexcluded":
+            if "restrictproposal" in data:
+                message += "Curent list of roles allowed to propose lists:"
+                for role in data["restrictproposal"]:
+                    rolename = msg.guild.get_role(role)
+                    message += f"\n{role}: {rolename}"
+            else:
+                message += "List proposal restrictions are disabled"
+
+        elif args[0] == "disable":
+            if "restrictproposal" in data:
+                data.pop("restrictproposal")
+                message += "Disabling proposal restrictions"
+            else:
+                message += "Proposal restrictions were not enabled"
+
+        elif args[0] == "includeroles":
+            message = ""
+            if "restrictproposal" not in data:
+                data["restrictproposal"] = set()
+                message += "Proposal restrictions not yet enabled, enabling them now\n"
+            if len(args) == 1:
+                message += "No roles were given\n"
+            else:
+                for role in args[1:]:
+                    if not role.isnumeric():
+                        message += role + " is not a role ID\n"
+                        continue
+                    if int(role) not in data["restrictproposal"]:
+                        message += role + " was not allowed to propose\n"
+                        continue
+                    data["restrictproposal"].remove(int(role))
+                    message += f"role with id {role}, name {msg.guild.get_role(int(role))} succesfully removed\n"
+        else:
+            message = "subcommand not recognized"
+
+
+    # -------------------------------
     # role configuration configuration
     elif argument == "role" and len(args) > 1:
         role = args[0].lower()
@@ -703,6 +778,47 @@ async def configure(msg, argument, *args):
                 else:
                     roledata["description"] = args[2]
                     message = f"Set description for role {role} to\n{args[2]}"
+
+
+    # -------------------------------
+    # proposal configuration configuration
+    elif argument == "modifyproposal" and len(args) > 1:
+        proposalID = int(args[0])
+        if "proposals" not in data:
+            message += "Proposals are not enabled"
+        elif proposalID not in data["proposals"]:
+            message += "Role not recognized"
+        else:
+            name, channelID, timestamp, listData = data["proposals"][proposalID]
+            action = args[1]
+            if action == "restrict_join":
+                listData["restricted"] = True
+                message = "This role can no longer be joined normally"
+            elif action == "allow_join":
+                listData.pop("restricted")
+                message = "This role can now be joined normally"
+            elif action == "restrict_ping":
+                listData["noping"] = True
+                message = "This role can no longer be pinged normally"
+            elif action == "allow_ping":
+                listData.pop("noping")
+                message = "This role can now be pinged normally"
+            elif action == "rename":
+                if len(args) == 2:
+                    message = "No new name was given"
+                else:
+                    data["proposals"][proposalID] = (args[2], channelID, timestamp, listData) 
+                    message = f"Proposal renamed to {args[2]}"
+            elif action == "description":
+                if len(args) == 2:
+                    message = "No description was given"
+                elif args[2] == "":
+                    if "description" in listData:
+                        listData.pop("description")
+                    message = f"Cleared the description for proposal {name}"
+                else:
+                    listData["description"] = args[2]
+                    message = f"Set description for proposal {name} to\n{args[2]}"
 
     # -------------------------------
     # channel restriction configuration
@@ -827,11 +943,8 @@ async def list(msg, page = 1):
         shownRoles = roleList[lbd:ubd]
         embedVar = discord.Embed(title=f"Page {page}/{pages}, items {lbd+1}-{min(ubd, roleCount)} out of {len(roleList)}", color=0x00ffff)
         for role in shownRoles:
-            roleData, _ = roles[role]
-            if "description" in roleData:
-                embedVar.add_field(name=role, value=roleData["description"], inline=False)
-            else:
-                embedVar.add_field(name=role, value="-", inline=False)
+            roleData, members = roles[role]
+            embedVar.add_field(name=role, value=f"{len(members)} members - " + (roleData["description"] if "description" in roleData else ""), inline=False)
         if pages > 1:
             embedVar.set_footer(text=f"Page {page} out of {pages}, use '+page [number]' to see the other pages.")
         await msg.send(embed=embedVar)
@@ -873,8 +986,8 @@ async def help(msg, *args):
         embed.add_field(name="get", value="See the ping lists that you are currently a member of.", inline=False)
         embed.add_field(name="list [page number]", value="Show existing ping lists.", inline=False)
         if "proposals" in data:
-            embed.add_field(name="+propose [suggested list]", value="Allow others to vote for the creation of a new list.", inline=False)
-            embed.add_field(name="+listProposals", value="See all active proposals and their message ID's (mostly for debugging purposes, you still need to search the message yourself).", inline=False)
+            embed.add_field(name="propose [suggested list]", value="Allow others to vote for the creation of a new list.", inline=False)
+            embed.add_field(name="listProposals", value="See all active proposals and their message ID's (mostly for debugging purposes, you still need to search the message yourself).", inline=False)
         if msg.author.guild_permissions.manage_roles:
             embed.add_field(name="help mod", value="Show moderation commands.", inline=False)
 
