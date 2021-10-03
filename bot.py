@@ -966,17 +966,21 @@ async def shutdown(msg):
         await bot.close()
 
 
-def saveDatabase(id):
+def saveDatabase(id, backup = False):
     print(f"saving database for ID {id}")
     db = check_guild(id)
-    pickle.dump(db, open(str(id) + ".dat", "wb"))
+    filepath = str(id)
+    if backup:
+        filepath += f"-{time.time()}"
+    filepath += ".dat"
+    pickle.dump(db, open(filepath, "wb"))
 
 
 @bot.command()
-async def save(msg):
+async def save(msg, backup = False):
     if msg.author.guild_permissions.manage_roles:
-        saveDatabase(msg.guild.id)
-        await msg.send("Saving server database.")
+        saveDatabase(msg.guild.id, backup=backup)
+        await msg.send(f"Saving server database " + ("backup" if backup else "") + ".")
 
 
 @bot.command()
