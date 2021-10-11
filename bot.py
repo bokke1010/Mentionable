@@ -167,178 +167,183 @@ def man_roles(ctx):
 def man_message(ctx):
     return ctx.author.guild_permissions.manage_messages
 
-def joinMember(guild, author, argument, memberID):
+def changeMembership(guild, operator, group : str, targetID = None, add = True, save = True):
     data, roles = check_guild(guild.id)
-    if argument not in roles:
+    group = group.lower()
+    if group not in roles:
         return "This group does not exist."
-    roledata, members = roles[argument]
+    roledata, members = roles[group]
 
     # Permission check
-    if "restricted" in roledata and not author.guild_permissions.manage_roles:
-        return
+    if "restricted" in roledata and not operator.guild_permissions.manage_roles:
+        return f"Could not add {get_name(guild, targetID)} to the {group} list due to list permissions."
 
-    isAuthor = author.id == memberID
+    isAuthor = False
+    if targetID is None or targetID == operator.id:
+        isAuthor = True
+        targetID = operator.id
+    message = "You were" if isAuthor else f"{get_name(guild, targetID)} was"
 
     # Feedback message
-    if memberID in members:
-        if isAuthor:
-            return f"You were already in the {argument} group"
+    if targetID in members:
+        if add:
+            message += f" already in"
         else:
-            return f"{get_name(guild, memberID)} was already in the {argument} group"
+            members.remove(targetID)
+            if save:
+                check_save(guild.id)
+            message += f" removed from"
     else:
-        # Add member to group
-        members.add(memberID)
-        check_save(guild.id)
-        if isAuthor:
-            return f"You joined {argument}"
+        if add:
+            members.add(targetID)
+            if save:
+                check_save(guild.id)
+            message += f" added to"
         else:
-            return f"{get_name(guild, memberID)} joined {argument}"
+            message += f"n't in"
+    return message + f" the {group} list."
+
+def changeMemberships(guild, operator, lists, targetID = None, add = True):
+    # Loop through lists and join the user to them one by one
+    responses = [changeMembership(guild, operator, group, targetID=targetID, add=add, save=False) for group in lists]
+    check_save(guild.id)
+    accumulator = ""
+    for response in responses:
+        if len(accumulator) + len(response) > 1980:
+            yield accumulator
+            accumulator = ""
+        accumulator += response + "\n"
+    if accumulator is not None:
+        yield accumulator
+
+@bot.command()
+async def join(msg, *lists):
+    applyRestrictions = not msg.author.guild_permissions.manage_roles
+    if applyRestrictions and channel_restricted(check_guild(msg.guild.id)[0], msg.channel.id, "membership"):
+        await msg.send("You may not use this command in this channel.")
+        return
+
+    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, add=True):
+        await msg.send(limitedResponse)
 
 
 @bot.command()
-async def join(msg, argument, *args):
+async def leave(msg, *lists):
     applyRestrictions = not msg.author.guild_permissions.manage_roles
-    # Get ID's of all users joining
     if applyRestrictions and channel_restricted(check_guild(msg.guild.id)[0], msg.channel.id, "membership"):
         # Check if this type of command is allowed in this channel
         await msg.send("You may not use this command in this channel.")
         return
-    uids = [msg.author.id] if len(args) == 0 or applyRestrictions else [int(uid) for uid in args]
-    argument = argument.lower()
-    
-    # Loop through users and join them one by one
-    response = ""
-    for uid in uids:
-        membResponse = joinMember(msg.guild, msg.author, argument, uid) + "\n"
-        if len(response) + len(membResponse) > 1980:
-            await msg.send(response + "...")
-            response = ""
-        response += membResponse
-    if response is not None:
-        await msg.send(response)
 
+    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, add=False):
+        await msg.send(limitedResponse)
 
 @bot.command()
-async def leave(msg, argument):
-    guid = msg.guild.id
-    argument = argument.lower()
-    data, roles = check_guild(guid)
-    if channel_restricted(data, msg.channel.id, "membership"):
-        # Check if this type of command is allowed in this channel
-        await msg.send("You may not use this command in this channel.")
-        return
-    
-    if argument in roles:
-        roledata, members = roles[argument]
-        if "restricted" in roledata and not man_roles(msg):
-            await msg.send("You cannot edit your membership of this role")
-            return
-
-        if msg.author.id in members:
-            members.remove(msg.author.id)
-            check_save(guid)
-            await msg.send(f"You left {argument}")
-        else:
-            await msg.send(f"You are not in {argument}")
-    else:
-        await msg.send("This list does not exist.")
-
-
-@bot.command()
-async def kick(msg, argument, userID: int):
-    guid = msg.guild.id
-    argument = argument.lower()
-    data, roles = check_guild(guid)
+async def add(msg, userID: int, *lists):
     if not man_roles(msg):
-        await msg.send("You do not have permission to do this")
-        return
-    elif argument not in roles:
-        await msg.send("This role not exist.")
+        await msg.send("You do not have permission to use this command.")
         return
 
-    userString = get_name(msg.guild, userID)
-    roledata, members = roles[argument]
-    if userID in members:
-        members.remove(userID)
-        check_save(msg.guild.id)
-        await msg.send(f"{userString} was kicked from {argument}")
-    else:
-        await msg.send(f"{userString} is not part of {argument}")
-
+    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, targetID=userID, add=False):
+        await msg.send(limitedResponse)
 
 @bot.command()
-async def ping(msg, argument):
+async def kick(msg, userID: int, *lists):
+    if not man_roles(msg):
+        await msg.send("You do not have permission to use this command.")
+        return
+
+    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, targetID=userID, add=False):
+        await msg.send(limitedResponse)
+
+def a():
+    pass
+
+@bot.command()
+async def ping(msg, *lists):
     # Get guild data
     guid = msg.guild.id
-    argument = argument.lower()
     data, roles = check_guild(guid)
 
-    # Check role existance
-    if argument not in roles:
-        await msg.send("This group does not exist.")
-        return
+    authorRoleIDS = [role.id for role in msg.author.roles]
 
-    roledata, members = roles[argument]
-    
-    # Create recentpings entry if none exist
+    repingdelay = data["pingdelay"] if "pingdelay" in data else REPINGDELAY
+
     if guid not in recentpings:
         recentpings[guid] = {}
     recentserverpings = recentpings[guid]
-    if argument not in recentserverpings:
-        recentserverpings[argument] = 0
     if "global" not in recentserverpings and "fastping" in data:
+        #FIXME: this means we cannot have a list called global
         recentserverpings["global"] = 0
 
-
     if not man_message(msg):
-        # Get relevant cooldown
-        repingdelay = REPINGDELAY
-        if "pingdelay" in roledata:
-            repingdelay = data["pingdelay"]
-        elif "pingdelay" in data:
-            repingdelay = data["pingdelay"]
-        authorRoleIDS = [role.id for role in msg.author.roles]
-
-        if "noping" in roledata:
-            # Check if the role can be pinged
-            await msg.send("This role cannot be mentioned normally")
-            return
-        elif "restrictping" in data:
-            # Check if user is allowed to ping a role
-            if (len(data["restrictping"].intersection(authorRoleIDS)) == 0):
-                await msg.send("You do not have permissions to ping")
-                return
-        elif recentserverpings[argument] + repingdelay > time.time():
-            # Check fake role rate limits
-            await msg.send("This list was pinged recently, please wait.")
+        # Server and channel wide condition checks
+        if "restrictping" in data and len(data["restrictping"].intersection(authorRoleIDS)) == 0:
+            await msg.send("You do not have permission to use +ping.")
             return
         elif "fastping" in data:
             # Check server wide rate limit
             cooldownApplies = len(data["fastping"].intersection(authorRoleIDS)) == 0
             withinCooldown = recentserverpings["global"] + repingdelay > time.time()
             if cooldownApplies and withinCooldown:
-                await msg.send("Another list was pinged recently, please wait.")
+                await msg.send("You must wait before using +ping.")
                 return
         elif channel_restricted(data, msg.channel.id, "mentioning"):
             # Check if this type of command is allowed in this channel
             await msg.send("You may not use this command in this channel.")
             return
 
-    # Update cooldowns
-    recentserverpings[argument] = time.time()
-    if "fastping" in data:
-        recentserverpings["global"] = time.time()
+    commandfeedback, allMembers, pingedLists = "", set(), []
+
+    for group in lists:
+        group = group.lower()
+        # Check role existance
+        if group not in roles:
+            commandfeedback += f"The list {group} does not exist.\n"
+            continue
+
+        roledata, members = roles[group]
+    
+        # Create recentpings entry if none exist
+        if group not in recentserverpings:
+            recentserverpings[group] = 0
+
+        # list-specific condition checks
+        if not man_message(msg):
+            # Get relevant cooldown
+            localpingdelay = roledata["pingdelay"] if "pingdelay" in roledata else repingdelay
+            
+            if "noping" in roledata:
+                # Check if the role can be pinged
+                commandfeedback += f"The list {group} cannot be mentioned normally.\n"
+                continue
+            elif recentserverpings[group] + localpingdelay > time.time():
+                # Check fake role rate limits
+                commandfeedback += f"The list {group} was pinged recently, please wait.\n"
+                continue
+        
+        # All checks succesfull, prepare the ping
+        pingedLists.append(group)
+        allMembers.update(members)
+        # Update local
+        recentserverpings[group] = time.time()
 
     # Ping users
-    message = f"Mentioning {argument}: "
-    for member in members:
-        if msg.guild.get_member(member) == None:
-            continue
-        memberping = f"<@{member}>"
-        if len(message) + len(memberping) > 1980:
-            await msg.send(message)
-            message = ""
-        message += memberping + ", "
+    message = commandfeedback
+    if len(pingedLists) > 0:
+        # Update global cooldown
+        if "fastping" in data:
+            recentserverpings["global"] = time.time()
+    
+        message += f"Mentioning {', '.join(pingedLists)}: "
+        for member in allMembers:
+            if msg.guild.get_member(member) == None:
+                continue
+            memberping = f"<@{member}>"
+            if len(message) + len(memberping) > 1980:
+                await msg.send(message)
+                message = ""
+            message += memberping + ", "
 
     await msg.send(message)
 
@@ -990,8 +995,8 @@ async def help(msg, *args):
     message = ""
     if len(args) == 0:
         embed.title = "Basic commands"
-        embed.add_field(name="join [list]", value="Allows you to join a ping list.", inline=False)
-        embed.add_field(name="leave [list]", value="Allows you to leave a ping list you joined previously.", inline=False)
+        embed.add_field(name="join [lists]", value="Allows you to join one or more ping lists.", inline=False)
+        embed.add_field(name="leave [lists]", value="Allows you to leave one or more ping lists you are already a member of.", inline=False)
         embed.add_field(name="ping [list]", value="pings all members of a ping list. May require a role.", inline=False)
         embed.add_field(name="get", value="See the ping lists that you are currently a member of.", inline=False)
         embed.add_field(name="list [page number]", value="Show existing ping lists.", inline=False)
@@ -1005,8 +1010,8 @@ async def help(msg, *args):
         embed.title = "Moderation commands"
         embed.add_field(name="create [list]", value="Create a list with the given name. Use \"help roleconfigure\" to see additional options.", inline=False)
         embed.add_field(name="delete [list]", value="Delete a existing ping list.", inline=False)
-        embed.add_field(name="kick [list] [user id]", value="Remove a member from a ping list.", inline=False)
-        embed.add_field(name="join [list] [user id]", value="Add a member from a ping list.", inline=False)
+        embed.add_field(name="add [user id] [list]", value="Add a member to one or more ping lists.", inline=False)
+        embed.add_field(name="kick [user id] [list]", value="Remove a member from one or more ping lists.", inline=False)
         embed.add_field(name="get [user id]", value="Show all ping lists a person has joined.", inline=False)
         embed.add_field(name="get [list]", value="Show all members of a ping list.", inline=False)
         embed.add_field(name="rename [list] [new name]", value="Rename a ping list.", inline=False)
@@ -1058,7 +1063,7 @@ async def help(msg, *args):
     elif args[0] == "channelblacklist" and msg.author.guild_permissions.manage_roles:
         embed.title = "Commands to blacklist certain command catagories from channels."
         embed.description = "The catagories are 'membership' for join and leave, 'mentioning' for ping, 'proposals' for list proposals and 'information' for get and list."
-        embed.add_field(name="configure togglechannelblacklist [catagory] [channel ID]", value="Toggle whether or not a certain catagory is blacklisted from a channel.", inline=False)
+        embed.add_field(name="configure togglechannelblacklist [channel ID] [catagory]", value="Toggle whether or not a certain catagory is blacklisted from a channel.", inline=False)
         
     elif args[0] == "listproposals" and msg.author.guild_permissions.manage_roles:
         embed.title = "Commands for anyone to propose a new list."
