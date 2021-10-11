@@ -292,6 +292,9 @@ async def ping(msg, *lists):
             # Check if this type of command is allowed in this channel
             await msg.send("You may not use this command in this channel.")
             return
+        elif len(lists) > 5:
+            await msg.send("Please ask a moderator to +ping more than 5 lists at once.")
+            return
 
     commandfeedback, allMembers, pingedLists = "", set(), []
 
@@ -997,7 +1000,7 @@ async def help(msg, *args):
         embed.title = "Basic commands"
         embed.add_field(name="join [lists]", value="Allows you to join one or more ping lists.", inline=False)
         embed.add_field(name="leave [lists]", value="Allows you to leave one or more ping lists you are already a member of.", inline=False)
-        embed.add_field(name="ping [list]", value="pings all members of a ping list. May require a role.", inline=False)
+        embed.add_field(name="ping [lists]", value="pings all members of one or more ping lists. May require a role.", inline=False)
         embed.add_field(name="get", value="See the ping lists that you are currently a member of.", inline=False)
         embed.add_field(name="list [page number]", value="Show existing ping lists.", inline=False)
         if "proposals" in data:
