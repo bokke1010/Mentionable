@@ -244,7 +244,7 @@ async def add(msg, userID: int, *lists):
         await msg.send("You do not have permission to use this command.")
         return
 
-    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, targetID=userID, add=False):
+    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, targetID=userID, add=True):
         await msg.send(limitedResponse)
 
 @bot.command()
