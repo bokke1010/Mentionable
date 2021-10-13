@@ -244,7 +244,7 @@ async def add(msg, userID: int, *lists):
         await msg.send("You do not have permission to use this command.")
         return
 
-    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, targetID=userID, add=False):
+    for limitedResponse in changeMemberships(msg.guild, msg.author, lists, targetID=userID, add=True):
         await msg.send(limitedResponse)
 
 @bot.command()
@@ -479,17 +479,21 @@ async def listProposals(msg):
     else:
         await msg.send("there are no active proposals.")
 
-async def proposeApproved(proposal):
+async def proposeApproved(proposal, users = []):
     name, channelID, timestamp, listData = proposal
     channel = bot.get_channel(channelID)
     guid = channel.guild.id
     data, roles = check_guild(guid)
     if name in roles:
+        roledata, members = roles[name]
+        for user in users:
+            members.add(user)
+        check_save(guid)
         await channel.send(f"Proposal approved, but {name} already exists.")
         return
-    roles[name] = (listData, set())
+    roles[name] = (listData, set(users))
     check_save(guid)
-    await channel.send(f"The '{name}' list was succesfully created!")
+    await channel.send(f"The proposed list '{name}' list was succesfully created!")
 
 
 @tasks.loop(seconds=240)
@@ -509,8 +513,9 @@ async def updateProposals():
             approved = False
             for reaction in message.reactions:
                 if str(reaction) == REACTION_APPROVE and reaction.count > proposalThreshold:
-                    await proposeApproved(proposal)
-                    await channel.send(f"Proposal for the {name} list is approved")
+                    userObjects = await reaction.users().flatten()
+                    users = [user.id for user in userObjects if not user.bot]
+                    await proposeApproved(proposal, users)
                     popable.append(messageID)
                     approved = True
                     break
@@ -958,7 +963,7 @@ async def list(msg, page = 1):
         embedVar = discord.Embed(title=f"Page {page}/{pages}, items {lbd+1}-{min(ubd, roleCount)} out of {len(roleList)}", color=0x00ffff)
         for role in shownRoles:
             roleData, members = roles[role]
-            embedVar.add_field(name=role, value=f"{len(members)} members - " + (roleData["description"] if "description" in roleData else ""), inline=False)
+            embedVar.add_field(name=role, value=f"{len(members)} members" + (" - " + roleData["description"] if "description" in roleData else ""), inline=False)
         if pages > 1:
             embedVar.set_footer(text=f"Page {page} out of {pages}, use '+list [number]' to see the other pages.")
         await msg.send(embed=embedVar)
@@ -1112,7 +1117,9 @@ async def on_reaction_add(reaction, user):
         if messageID in proposals:
             proposalThreshold = data["proposalThreshold"] if "proposalThreshold" in data else ROLE_PROPOSAL_THRESHOLD
             if reaction.count > proposalThreshold:
-                await proposeApproved(proposals.pop(messageID))
+                userObjects = await reaction.users().flatten()
+                users = [user.id for user in userObjects if not user.bot]
+                await proposeApproved(proposals.pop(messageID), users)
         print(proposals)
 
 
