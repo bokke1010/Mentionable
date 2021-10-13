@@ -960,7 +960,7 @@ async def list(msg, page = 1):
             roleData, members = roles[role]
             embedVar.add_field(name=role, value=f"{len(members)} members - " + (roleData["description"] if "description" in roleData else ""), inline=False)
         if pages > 1:
-            embedVar.set_footer(text=f"Page {page} out of {pages}, use '+page [number]' to see the other pages.")
+            embedVar.set_footer(text=f"Page {page} out of {pages}, use '+list [number]' to see the other pages.")
         await msg.send(embed=embedVar)
     else:
         await msg.send("No fake roles exist for this server.")
