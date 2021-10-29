@@ -73,12 +73,7 @@ BOT_EXTRA_ROLELOGS = True
 #       > userID
 #       > ...
 # =============================
-# TODO:
-# - Vote-based +create command
-
-# =============================
 # Bot setup
-
 
 intents = discord.Intents.default()
 intents.members = True
@@ -321,7 +316,7 @@ async def ping(msg, *lists):
                 commandfeedback += f"The list {group} cannot be mentioned normally.\n"
                 continue
             elif recentserverpings[group] + localpingdelay > time.time():
-                # Check fake role rate limits
+                # Check list rate limits
                 commandfeedback += f"The list {group} was pinged recently, please wait.\n"
                 continue
         
@@ -380,7 +375,7 @@ async def get(msg, *args):
                 message += "\n" + name
             await msg.send(message)
         else:
-            await msg.send("Invalid user ID or role name")
+            await msg.send("Invalid user ID or list name.")
     else:
         if not bypassRestrictions and channel_restricted(data, msg.channel.id, "information"):
             # Check if this type of command is allowed in this channel
@@ -401,7 +396,7 @@ async def create(msg, argument, *args):
         await msg.send("You do not have permission to do this")
         return
     if argument in roles:
-        await msg.send("This role already exists, ignoring command.")
+        await msg.send("This list already exists, ignoring command.")
         return
 
     roledata = {}
@@ -437,13 +432,13 @@ async def propose(msg, argument):
         # Check if user is allowed to ping a role
         authorRoleIDS = [role.id for role in msg.author.roles]
         if (len(data["restrictproposal"].intersection(authorRoleIDS)) == 0):
-            await msg.send("You do not have permissions to propose roles")
+            await msg.send("You do not have permissions to propose a ping list.")
             return
     if "proposals" not in data:
-        await msg.send("Role proposals are disabled")
+        await msg.send("List proposals are disabled")
     proposals = data["proposals"]
-    votingMessage = await msg.send(f"you may now vote on the proposed role {argument}")
-    proposals[votingMessage.id] = (argument, msg.channel.id, time.time(), {})
+    votingMessage = await msg.send(f"you may now vote on the proposed list {argument}")
+    proposals[votingMessage.id] = (argument, msg.channel.id, time.time(), {"proposer":msg.author.id})
     await votingMessage.add_reaction(REACTION_APPROVE)
     check_save(msg.guild.id)
 
@@ -491,6 +486,8 @@ async def proposeApproved(proposal, users = []):
         check_save(guid)
         await channel.send(f"Proposal approved, but {name} already exists.")
         return
+    if "proposer" in listData:
+        users.append(listData.pop("proposer"))
     roles[name] = (listData, set(users))
     check_save(guid)
     await channel.send(f"The proposed list '{name}' list was succesfully created!")
@@ -512,12 +509,16 @@ async def updateProposals():
             proposalThreshold = data["proposalThreshold"] if "proposalThreshold" in data else ROLE_PROPOSAL_THRESHOLD
             approved = False
             for reaction in message.reactions:
-                if str(reaction) == REACTION_APPROVE and reaction.count > proposalThreshold:
-                    userObjects = await reaction.users().flatten()
-                    users = [user.id for user in userObjects if not user.bot]
-                    await proposeApproved(proposal, users)
-                    popable.append(messageID)
-                    approved = True
+                if str(reaction) == REACTION_APPROVE:
+                    if reaction.count >= proposalThreshold:
+                        authorID = listData["proposer"] if "proposer" in listData else 0
+                        userObjects = await reaction.users().flatten()
+                        users = [user.id for user in userObjects if not user.bot]
+                        if authorID in users and reaction.count == proposalThreshold:
+                            break
+                        await proposeApproved(proposal, users)
+                        popable.append(messageID)
+                        approved = True
                     break
                 
             timeout = data["proposalTimeout"] if "proposalTimeout" in data else ROLE_PROPOSAL_TIMEOUT
@@ -537,10 +538,10 @@ async def rename(msg, oldname, newname):
         await msg.send("You do not have permission to do this")
         return
     if newname in roles:
-        await msg.send("This role already exists, ignoring command.")
+        await msg.send("This list already exists, ignoring command.")
         return
     if oldname not in roles:
-        await msg.send("This role does not exist, ignoring command.")
+        await msg.send("This list does not exist, ignoring command.")
         return
 
     role = roles.pop(oldname)
@@ -755,38 +756,38 @@ async def configure(msg, argument, *args):
 
     # -------------------------------
     # role configuration configuration
-    elif argument == "role" and len(args) > 1:
+    elif argument == "list" and len(args) > 1:
         role = args[0].lower()
         if role not in roles:
-            message += "Role not recognized"
+            message += "Ping list not recognized"
         else:
             roledata, members = roles[role]
             action = args[1]
             if action == "restrict_join":
                 roledata["restricted"] = True
-                message = "This role can no longer be joined normally"
+                message = "This list can no longer be joined normally"
             elif action == "allow_join":
                 roledata.pop("restricted")
-                message = "This role can now be joined normally"
+                message = "This list can now be joined normally"
             elif action == "restrict_ping":
                 roledata["noping"] = True
-                message = "This role can no longer be pinged normally"
+                message = "This list can no longer be pinged normally"
             elif action == "allow_ping":
                 roledata.pop("noping")
-                message = "This role can now be pinged normally"
+                message = "This list can now be pinged normally"
             elif action == "cooldown":
                 if len(args) == 2:
                     message = "No cooldown was given"
                 elif args[2] == "reset":
                     if "pingdelay" in roledata:
                         roledata.pop("pingdelay")
-                    message = f"Set delay for role {role} to the default value"
+                    message = f"Set delay for list {role} to the default value"
                 elif args[2].isnumeric():
                     newcooldown = float(args[2])
                     roledata["pingdelay"] = newcooldown
-                    message = f"Set delay for role {role} to {newcooldown}"
+                    message = f"Set delay for list {role} to {newcooldown}"
                 else:
-                    message = "invalid role cooldown command"
+                    message = "invalid list cooldown command"
             elif action == "description":
                 if len(args) == 2:
                     message = "No description was given"
@@ -916,7 +917,7 @@ async def delete(msg, argument):
     argument = argument.lower()
     data, roles = check_guild(msg.guild.id)
     if not man_roles(msg):
-        await msg.send("You do not have permission to do this")
+        await msg.send("You do not have permission to do this.")
         return
     elif argument not in roles:
         await msg.send("This role does not exist.")
@@ -924,7 +925,7 @@ async def delete(msg, argument):
 
     roles.pop(argument, None)
     check_save(msg.guild.id)
-    await msg.send("Deleted fake role")
+    await msg.send("Deleted ping list.")
 
 
 @bot.command()
@@ -968,7 +969,7 @@ async def list(msg, page = 1):
             embedVar.set_footer(text=f"Page {page} out of {pages}, use '+list [number]' to see the other pages.")
         await msg.send(embed=embedVar)
     else:
-        await msg.send("No fake roles exist for this server.")
+        await msg.send("No ping lists exist for this server.")
 
 
 @bot.command()
@@ -1016,7 +1017,7 @@ async def help(msg, *args):
 
     elif args[0] == "mod":
         embed.title = "Moderation commands"
-        embed.add_field(name="create [list]", value="Create a list with the given name. Use \"help roleconfigure\" to see additional options.", inline=False)
+        embed.add_field(name="create [list]", value="Create a list with the given name. Use \"help listconfigure\" to see additional options.", inline=False)
         embed.add_field(name="delete [list]", value="Delete a existing ping list.", inline=False)
         embed.add_field(name="add [user id] [list]", value="Add a member to one or more ping lists.", inline=False)
         embed.add_field(name="kick [user id] [list]", value="Remove a member from one or more ping lists.", inline=False)
@@ -1026,7 +1027,7 @@ async def help(msg, *args):
         embed.add_field(name="help globalcooldown", value="See the commands related to the server-wide ping cooldown.", inline=False)
         embed.add_field(name="help pingrestriction", value="See the commands related to the roles required to use +ping.", inline=False)
         embed.add_field(name="help pingcooldown", value="See the commands related to list-specific cooldowns.", inline=False)
-        embed.add_field(name="help roleconfigure", value="See the commands related to configuring single ping lists.", inline=False)
+        embed.add_field(name="help listconfigure", value="See the commands related to configuring single ping lists.", inline=False)
         embed.add_field(name="help channelblacklist", value="See the commands related to configuring single ping lists.", inline=False)
         embed.add_field(name="help listproposals", value="See the commands related to configuring single ping lists.", inline=False)
 
@@ -1054,19 +1055,19 @@ async def help(msg, *args):
     elif args[0] == "pingcooldown" and msg.author.guild_permissions.manage_roles:
         embed.title = "Commands to configure the list-specific cooldowns."
         embed.add_field(name="configure defaultcooldown [time in seconds]", value="Configure the default ping cooldown for this server.", inline=False)
-        embed.add_field(name="configure role [role] cooldown [time in seconds]", value="Add a list-specific cooldown for this list.", inline=False)
-        embed.add_field(name="configure role [role] cooldown reset", value="Remove the list-specific cooldown for this list.", inline=False)
+        embed.add_field(name="configure list [list] cooldown [time in seconds]", value="Add a list-specific cooldown for this list.", inline=False)
+        embed.add_field(name="configure list [list] cooldown reset", value="Remove the list-specific cooldown for this list.", inline=False)
         embed.add_field(name="resetCooldown [role]", value="Reset the ping cooldown for a role, allowing it to be mentioned again.", inline=False)
 
-    elif args[0] == "roleconfigure" and msg.author.guild_permissions.manage_roles:
+    elif args[0] == "listconfigure" and msg.author.guild_permissions.manage_roles:
         embed.title = "Commands to configure a specific role"
-        embed.description = "Role properties can be added by putting them after '+create [property]' or by using '+configure role [rolename] [property]'\nValid properties follow below."
+        embed.description = "Ping list properties can be added by putting them after '+create [list name] [property]' or by using '+configure list [list name] [property]'\nValid properties follow below."
         embed.add_field(name="restrict_join", value="List membership can only be changed by people with manage messages.", inline=False)
         embed.add_field(name="allow_join", value="(default) Someone may change their own membership status for this list.", inline=False)
         embed.add_field(name="restrict_ping", value="This list may only be mentioned by someone with manage messages.", inline=False)
         embed.add_field(name="allow_ping", value="(default) This list may be mentioned by anyone who complies with the other restrictions.", inline=False)
         embed.add_field(name="description [description text]", value="Add a description to this list that shows up when using '+list'.", inline=False)
-        embed.set_footer(text="See '+help pingcooldown' to configure the role specific ping cooldowns")
+        embed.set_footer(text="See '+help pingcooldown' to configure the list specific ping cooldowns.")
         
     elif args[0] == "channelblacklist" and msg.author.guild_permissions.manage_roles:
         embed.title = "Commands to blacklist certain command catagories from channels."
@@ -1116,12 +1117,14 @@ async def on_reaction_add(reaction, user):
         proposals = data["proposals"]
         if messageID in proposals:
             proposalThreshold = data["proposalThreshold"] if "proposalThreshold" in data else ROLE_PROPOSAL_THRESHOLD
-            if reaction.count > proposalThreshold:
+            if reaction.count >= proposalThreshold:
+                listData = proposals[messageID][3]
+                authorID = listData["proposer"] if "proposer" in listData else 0
                 userObjects = await reaction.users().flatten()
                 users = [user.id for user in userObjects if not user.bot]
+                if authorID in users and reaction.count == proposalThreshold:
+                    return
                 await proposeApproved(proposals.pop(messageID), users)
-        print(proposals)
-
 
 # @bot.event
 # async def on_reaction_remove(reaction, user):
