@@ -162,9 +162,15 @@ def man_roles(ctx):
 def man_message(ctx):
     return ctx.author.guild_permissions.manage_messages
 
+def sanitize_list_name(name):
+    lrd = name.lower()
+    for c in ['`','<@', '*', '>', '_']:
+        lrd = lrd.replace(c, '')
+    return lrd
+
 def changeMembership(guild, operator, group : str, targetID = None, add = True, save = True):
     data, roles = check_guild(guild.id)
-    group = group.lower()
+    group = sanitize_list_name(group)
     if group not in roles:
         return "This group does not exist."
     roledata, members = roles[group]
@@ -294,7 +300,7 @@ async def ping(msg, *lists):
     commandfeedback, allMembers, pingedLists = "", set(), []
 
     for group in lists:
-        group = group.lower()
+        group = sanitize_list_name(group)
         # Check role existance
         if group not in roles:
             commandfeedback += f"The list {group} does not exist.\n"
@@ -365,8 +371,8 @@ async def get(msg, *args):
                     message = ""
                 message += "\n" + role
             await msg.send(message)
-        elif args[0].lower() in roles:
-            roledata, members = roles[args[0].lower()]
+        elif sanitize_list_name(args[0]) in roles:
+            roledata, members = roles[sanitize_list_name(args[0])]
             message = f"This group contains the following {len(members)} users:"
             for name in (get_name(msg.guild, member) for member in members):
                 if len(message) + len(name) > 1980:
@@ -390,7 +396,7 @@ async def get(msg, *args):
 
 @bot.command()
 async def create(msg, argument, *args):
-    argument = argument.lower()
+    argument = sanitize_list_name(argument)
     data, roles = check_guild(msg.guild.id)
     if not man_roles(msg):
         await msg.send("You do not have permission to do this")
@@ -419,7 +425,7 @@ async def create(msg, argument, *args):
 #ANCHOR Working here
 @bot.command()
 async def propose(msg, argument):
-    argument = argument.lower()
+    argument = sanitize_list_name(argument)
     data, roles = check_guild(msg.guild.id)
     if channel_restricted(data, msg.channel.id, "proposals") and not man_roles(msg):
         # Check if this type of command is allowed in this channel
@@ -531,8 +537,35 @@ async def updateProposals():
             check_save(guid)
 
 @bot.command()
+async def acceptProposal(msg, pid):
+    if not man_roles(msg):
+        await msg.send("You do not have permission to do this")
+        return
+    guid = msg.guild.id
+    data, roles = check_guild(guid)
+    if not "proposals" in data:
+        await msg.send("Proposals are not enabled")
+        return
+    if not pid.isnumeric():
+        await msg.send("Non-numeric proposal message id")
+        return
+    proposals = data["proposals"]
+    messageID = int(pid)
+    if not messageID in proposals:
+        await msg.send("This is not a valid proposal id")
+        return
+    proposal = proposals.pop(messageID)
+    channelID = proposal[1]
+    channel = bot.get_channel(channelID)
+    message = await channel.fetch_message(messageID)
+    validReacts = [r for r in message.reactions if r.emoji == REACTION_APPROVE]
+    userObjects = await validReacts[0].users().flatten()
+    users = [user.id for user in userObjects if not user.bot]
+    await proposeApproved(proposal, users)
+
+@bot.command()
 async def rename(msg, oldname, newname):
-    oldname, newname = oldname.lower(), newname.lower()
+    oldname, newname = sanitize_list_name(oldname), sanitize_list_name(newname)
     data, roles = check_guild(msg.guild.id)
     if not man_roles(msg):
         await msg.send("You do not have permission to do this")
@@ -694,7 +727,7 @@ async def configure(msg, argument, *args):
             message = "subcommand not recognized"
 
     # -------------------------------
-    # ping restriction configuration:
+    # proposal restriction configuration:
     elif argument == "proposalrestrictions" and len(args) > 0:
         if args[0] == "enable":
             if "restrictproposal" not in data:
@@ -757,7 +790,7 @@ async def configure(msg, argument, *args):
     # -------------------------------
     # role configuration configuration
     elif argument == "list" and len(args) > 1:
-        role = args[0].lower()
+        role = sanitize_list_name(args[0])
         if role not in roles:
             message += "Ping list not recognized"
         else:
@@ -914,7 +947,7 @@ async def configure(msg, argument, *args):
 
 @bot.command()
 async def delete(msg, argument):
-    argument = argument.lower()
+    argument = sanitize_list_name(argument)
     data, roles = check_guild(msg.guild.id)
     if not man_roles(msg):
         await msg.send("You do not have permission to do this.")
@@ -930,7 +963,7 @@ async def delete(msg, argument):
 
 @bot.command()
 async def resetCooldown(msg, argument):
-    argument = argument.lower()
+    argument = sanitize_list_name(argument)
     guid = msg.guild.id
     data, roles = check_guild(guid)
     if not man_roles(msg):
